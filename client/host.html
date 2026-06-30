@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Host — BDC</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/styles/main.css" />
+    <script type="module" src="/src/ambient-bg.ts"></script>
+  </head>
+  <body>
+    <div class="landing">
+      <h1>Host TV Session</h1>
+      <p id="status">Creating room…</p>
+      <div id="qr" class="qr-grid"></div>
+      <div class="setup-form">
+        <label>Players <select id="playerCount"><option value="2">2</option><option value="3">3</option><option value="4" selected>4</option></select></label>
+        <label>Possessed <select id="possessed"></select></label>
+        <button class="btn" id="openTv">Open TV View</button>
+        <button class="btn secondary" id="startBtn">Start Game</button>
+      </div>
+      <p><a href="/">Back</a></p>
+    </div>
+    <script type="module" src="/src/host.ts"></script>
+  </body>
+</html>

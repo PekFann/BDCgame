@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Solo — BDC</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/styles/main.css" />
+    <script type="module" src="/src/ambient-bg.ts"></script>
+  </head>
+  <body>
+    <div id="setup" class="landing">
+      <h1>Solo Mode</h1>
+      <p>You + AI teammates</p>
+      <div class="setup-form">
+        <label>Players <select id="playerCount"><option value="2">2</option><option value="3">3</option><option value="4" selected>4</option></select></label>
+        <label>Possessed <select id="possessed" disabled></select></label>
+        <p id="setupError" style="color: var(--danger); display: none"></p>
+        <button class="btn" id="startBtn" disabled>Start Game</button>
+      </div>
+    </div>
+    <div id="game" class="game-shell" style="display: none">
+      <div class="game-main">
+        <div class="board-zone">
+          <div id="board" class="board"></div>
+        </div>
+      </div>
+      <footer class="game-footer">
+        <span id="hand-label" class="hand-label"></span>
+        <div class="hand-row">
+          <div id="hand-discard" class="hand-side-slot hand-discard-slot"></div>
+          <div id="hand" class="hand"></div>
+          <div id="hand-discussion" class="hand-side-slot hand-discussion-slot"></div>
+        </div>
+        <div class="hand-actions-row">
+          <div id="actions" class="actions-bar actions-bar-main"></div>
+        </div>
+      </footer>
+    </div>
+    <script type="module" src="/src/solo.ts"></script>
+  </body>
+</html>

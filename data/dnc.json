@@ -1,0 +1,22 @@
+[
+  {"id":"dnc_01","name":"Diurnal Cycle 1","file":"Diurnal Cycle/DNC_01.png","dayActions":2,"nightActions":2,"triggerDice":[1,2],"eventDice":[5,6],"phases":["draw","day","triggers","night","manifest"]},
+  {"id":"dnc_02","name":"Diurnal Cycle 2","file":"Diurnal Cycle/DNC_02.png","dayActions":3,"nightActions":2,"triggerDice":[1,2],"eventDice":[4,5],"phases":["draw","day","triggers","night","manifest"]},
+  {"id":"dnc_03","name":"Diurnal Cycle 3","file":"Diurnal Cycle/DNC_03.png","dayActions":1,"nightActions":1,"triggerDice":[1,2],"eventDice":[4,5],"phases":["draw","day","triggers","night","manifest"]},
+  {"id":"dnc_04","name":"Diurnal Cycle 4","file":"Diurnal Cycle/DNC_04.png","dayActions":1,"nightActions":3,"triggerDice":[1,2],"eventDice":[5,6],"phases":["draw","day","triggers","night","manifest"]},
+  {"id":"dnc_05","name":"Diurnal Cycle 5","file":"Diurnal Cycle/DNC_05.png","dayActions":2,"nightActions":3,"triggerDice":[1,2],"eventDice":[4,6],"phases":["draw","day","triggers","manifest","night"]},
+  {"id":"dnc_06","name":"Diurnal Cycle 6","file":"Diurnal Cycle/DNC_06.png","dayActions":4,"nightActions":1,"triggerDice":[1,2],"eventDice":[4,5],"phases":["draw","day","triggers","manifest","night"]},
+  {"id":"dnc_07","name":"Diurnal Cycle 7","file":"Diurnal Cycle/DNC_07.png","dayActions":2,"nightActions":3,"triggerDice":[1,2],"eventDice":[5,6],"phases":["day","draw","triggers","night","manifest"]},
+  {"id":"dnc_08","name":"Diurnal Cycle 8","file":"Diurnal Cycle/DNC_08.png","dayActions":3,"nightActions":1,"triggerDice":[1,2],"eventDice":[4,5],"phases":["day","draw","triggers","night","manifest"]},
+  {"id":"dnc_09","name":"Diurnal Cycle 9","file":"Diurnal Cycle/DNC_09.png","dayActions":3,"nightActions":2,"triggerDice":[1,2],"eventDice":[5,6],"phases":["triggers","day","draw","night","manifest"]},
+  {"id":"dnc_10","name":"Diurnal Cycle 10","file":"Diurnal Cycle/DNC_10.png","dayActions":2,"nightActions":2,"triggerDice":[1,2],"eventDice":[5,6],"phases":["triggers","day","draw","night","manifest"]},
+  {"id":"dnc_11","name":"Diurnal Cycle 11","file":"Diurnal Cycle/DNC_11.png","dayActions":4,"nightActions":1,"triggerDice":[1,2],"eventDice":[5,6],"phases":["triggers","day","draw","manifest","night"]},
+  {"id":"dnc_12","name":"Diurnal Cycle 12","file":"Diurnal Cycle/DNC_12.png","dayActions":1,"nightActions":4,"triggerDice":[1,2],"eventDice":[5,6],"phases":["triggers","day","draw","manifest","night"]},
+  {"id":"dnc_13","name":"Diurnal Cycle 13","file":"Diurnal Cycle/DNC_13.png","dayActions":2,"nightActions":3,"triggerDice":[1,2],"eventDice":[5,6],"phases":["triggers","day","manifest","night","draw"]},
+  {"id":"dnc_14","name":"Diurnal Cycle 14","file":"Diurnal Cycle/DNC_14.png","dayActions":4,"nightActions":1,"triggerDice":[1,2],"eventDice":[5,6],"phases":["triggers","day","manifest","night","draw"]},
+  {"id":"dnc_15","name":"Diurnal Cycle 15","file":"Diurnal Cycle/DNC_15.png","dayActions":2,"nightActions":2,"triggerDice":[1,2],"eventDice":[5,6],"phases":["draw","day","manifest","night","triggers"]},
+  {"id":"dnc_16","name":"Diurnal Cycle 16","file":"Diurnal Cycle/DNC_16.png","dayActions":3,"nightActions":2,"triggerDice":[1,2],"eventDice":[5,6],"phases":["draw","day","manifest","night","triggers"]},
+  {"id":"dnc_17","name":"Diurnal Cycle 17","file":"Diurnal Cycle/DNC_17.png","dayActions":3,"nightActions":2,"triggerDice":[1,2],"eventDice":[5,6],"phases":["draw","triggers","day","manifest","night"]},
+  {"id":"dnc_18","name":"Diurnal Cycle 18","file":"Diurnal Cycle/DNC_18.png","dayActions":1,"nightActions":4,"triggerDice":[1,2],"eventDice":[5,6],"phases":["draw","triggers","day","manifest","night"]},
+  {"id":"dnc_19","name":"Diurnal Cycle 19","file":"Diurnal Cycle/DNC_19.png","dayActions":3,"nightActions":2,"triggerDice":[1,2],"eventDice":[5,6],"phases":["draw","day","manifest","triggers","night"]},
+  {"id":"dnc_20","name":"Diurnal Cycle 20","file":"Diurnal Cycle/DNC_20.png","dayActions":2,"nightActions":3,"triggerDice":[1,2],"eventDice":[5,6],"phases":["draw","day","manifest","triggers","night"]}
+]

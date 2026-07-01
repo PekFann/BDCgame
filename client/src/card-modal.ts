@@ -3,6 +3,7 @@ import cardsData from "../../data/cards.json";
 import { CARD_PICK_ONE_OPTIONS, isPickOneEffect } from "./card-play-options.js";
 import { closeAnimatedModal, forceCloseModal, openAnimatedModal } from "./modal-animations.js";
 import { cardImg, cardName } from "./ws-client.js";
+import { isInputLocked } from "./input-lock.js";
 
 type SendFn = (action: GameAction) => void;
 type ModalMode = "preview" | "resolve";
@@ -170,7 +171,12 @@ function renderModalButtons(
     if (disabled) btn.classList.add("disabled");
     btn.textContent = label;
     btn.disabled = disabled;
-    if (!disabled) btn.onclick = action;
+    if (!disabled) {
+      btn.onclick = () => {
+        if (isInputLocked()) return;
+        action();
+      };
+    }
     buttonsEl.appendChild(btn);
   };
 
@@ -190,13 +196,12 @@ function renderModalButtons(
         disabled
       );
     }
-  } else if (showPending && pending?.targets) {
-    for (const t of pending.targets) {
-      addBtn(`Target demon (${pending.amount ?? 1} dmg)`, () => {
-        send({ type: "SELECT_TARGET", targetId: t });
-        forceCloseCardModal();
-      }, true);
-    }
+  } else if (showPending && pending?.targets && pending.targets.length === 1) {
+    const t = pending.targets[0];
+    addBtn(`Target demon (${pending.amount ?? 1} dmg)`, () => {
+      send({ type: "SELECT_TARGET", targetId: t });
+      forceCloseCardModal();
+    }, true);
   } else if (
     modalMode === "preview" &&
     instanceId &&
@@ -263,6 +268,7 @@ function renderModal(ctx: CardModalContext, cardId: string, instanceId: string |
 }
 
 export function openCardModal(card: CardInstance, ctx: CardModalContext): void {
+  if (isInputLocked()) return;
   humanPlayerId = ctx.humanPlayerId;
   modalMode = "preview";
   openInstanceId = card.instanceId;

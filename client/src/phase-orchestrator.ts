@@ -65,7 +65,7 @@ export async function handlePresentationUpdate(
 
   if (key === lastHoldKey) {
     if (hold.at === "post_trigger_roll" && ctx.mode !== "tv") {
-      resetTriggerRollClientFlags();
+      return ctx.prevHandIds;
     }
     await ackPresentationIfHuman(ctx);
     return ctx.prevHandIds;
@@ -94,7 +94,7 @@ export async function handlePresentationUpdate(
           }
         } else {
           if (!isTriggerRollPresentationRunning()) {
-            await runTriggerRollPresentationIfNeeded(pub);
+            await runTriggerRollPresentationIfNeeded(pub, ctx.send);
           } else {
             while (isTriggerRollPresentationRunning()) {
               await sleep(50);
@@ -106,7 +106,6 @@ export async function handlePresentationUpdate(
           console.warn("Dice presentation failed:", err);
         }
       }
-      await ackPresentationIfHuman(ctx);
       lastHoldKey = key;
       return ctx.prevHandIds;
     }
@@ -124,7 +123,7 @@ export async function handlePresentationUpdate(
             prevIdsForAnim,
             ctx.hand,
             ctx.onRenderHand,
-            (card) => getHandCardVisualClass(pub.phase, card.cardId),
+            (card) => getHandCardVisualClass(pub.phase, card.cardId, pub),
             ctx.handCtx
           );
         } else {

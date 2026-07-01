@@ -1,7 +1,7 @@
 import type { GameState, PendingChoice } from "../../../shared/types.js";
 import { getCard } from "../../../shared/cards.js";
-import { findDemon, getPlayer, clearRestVotesIfPoolSpent } from "../rules.js";
-import { log, rollD6 } from "../util.js";
+import { getPlayer, clearRestVotesIfPoolSpent, legalDamageTargets } from "../rules.js";
+import { log } from "../util.js";
 import {
   dealDamageToDemon,
   discardFromHand,
@@ -13,8 +13,8 @@ import {
   canPlayCardInCurrentPhase,
   removeFromHandToDiscard,
   revealDemon,
-  rollAndStore,
 } from "./primitives.js";
+import { beginDiceRoll, executeReroll } from "../dice-reroll.js";
 
 export interface PlayContext {
   state: GameState;
@@ -160,6 +160,7 @@ export function startPlayCard(ctx: PlayContext): PendingChoice | null {
     return null;
   }
   if (def.effectId === "time_travel") {
+    if (state.lastDiceRoll === null) throw new Error("No dice roll to reroll");
     if (player.hand.length > 0) {
       return pendingFromCard(
         { kind: "discard_cards", playerId, minDiscard: 1, maxDiscard: 1 },
@@ -170,9 +171,7 @@ export function startPlayCard(ctx: PlayContext): PendingChoice | null {
     return null;
   }
   if (def.effectId === "talk_it_out") {
-    const roll = rollAndStore(state, playerId);
-    if (roll <= 4) revealDemon(state);
-    else gainFriendship(player, -1);
+    beginDiceRoll(state, playerId, "card", { effectId: "talk_it_out", playerId });
     return null;
   }
   if (def.effectId === "sharp_truth") {
@@ -180,17 +179,7 @@ export function startPlayCard(ctx: PlayContext): PendingChoice | null {
     return selectDemonTarget(state, playerId, 3, instance.cardId, cardInstanceId);
   }
   if (def.effectId === "wild_card") {
-    const roll = rollAndStore(state, playerId);
-    if (roll <= 3) {
-      discardFromHand(state, player, player.hand.map((c) => c.instanceId));
-      drawForPlayer(state, player, 5);
-    } else {
-      drawForPlayer(state, player, 5);
-      if (player.hand.length > 2) {
-        const excess = player.hand.splice(2);
-        state.actionDiscard.push(...excess);
-      }
-    }
+    beginDiceRoll(state, playerId, "card", { effectId: "wild_card", playerId });
     return null;
   }
   if (def.effectId === "fast_and_pray") {
@@ -213,24 +202,29 @@ export function startPlayCard(ctx: PlayContext): PendingChoice | null {
     );
   }
   if (def.effectId === "instant_access") {
-    const roll = rollAndStore(state, playerId);
-    if (roll <= 3 && state.actionDiscard.length > 0) addDiscardToHand(state, player);
-    else drawForPlayer(state, player, 1);
+    beginDiceRoll(state, playerId, "card", { effectId: "instant_access", playerId });
     return null;
   }
   if (def.effectId === "resurrection") {
-    if (state.possessedHp <= 0) state.possessedHp = 1;
     return null;
   }
   if (def.effectId === "trumpet_of_victory") return null;
   if (def.effectId === "chain_broken") {
-    const roll = rollAndStore(state, playerId);
-    if (ctx.targetId) dealDamageToDemon(state, ctx.targetId, roll, playerId);
-    else return selectDemonTarget(state, playerId, roll, instance.cardId, cardInstanceId);
+    beginDiceRoll(state, playerId, "card", {
+      effectId: "chain_broken",
+      playerId,
+      cardInstanceId: instance.instanceId,
+      targetId: ctx.targetId,
+    });
     return null;
   }
   if (def.effectId === "contract_breaker") {
-    if (state.demon) dealDamageToDemon(state, state.demon.instanceId, state.possessedHp, playerId);
+    const targets = legalDamageTargets(state);
+    if (state.demon && targets.includes(state.demon.instanceId)) {
+      dealDamageToDemon(state, state.demon.instanceId, state.possessedHp, playerId);
+    } else {
+      log(state, "Cannot damage demon while contract is hidden.");
+    }
     return null;
   }
 
@@ -247,19 +241,7 @@ function addDiscardToHand(state: GameState, player: { hand: { instanceId: string
 }
 
 function demonTargets(state: GameState): string[] {
-  const targets: string[] = [];
-  if (state.demon && state.demon.hp > 0) targets.push(state.demon.instanceId);
-  for (const imp of state.imps) {
-    if (imp.hp > 0) targets.push(imp.instanceId);
-  }
-  return targets;
-}
-
-function prayerDamageTargets(state: GameState): string[] {
-  return demonTargets(state).filter((id) => {
-    if (state.demon?.instanceId === id && !state.demonRevealed) return false;
-    return true;
-  });
+  return legalDamageTargets(state);
 }
 
 function selectDemonTarget(
@@ -294,7 +276,7 @@ export function resolvePickOne(state: GameState, playerId: string, optionId: str
     }
     let dmg = 1;
     if (state.prayerUsedThisPhase.size > 1) dmg += 1;
-    const targets = prayerDamageTargets(state);
+    const targets = demonTargets(state);
     if (targets.length === 0) {
       log(state, "Cannot damage demon while contract is hidden.");
       return;
@@ -355,11 +337,16 @@ export function resolveDiscardEffect(state: GameState, playerId: string, ids: st
       };
   }
   if (effectId === "time_travel") {
-    rollAndStore(state, playerId);
+    if (state.lastDiceRoll === null) throw new Error("No dice roll to reroll");
+    executeReroll(state, playerId);
   }
 }
 
 export function resolveTarget(state: GameState, playerId: string, targetId: string, amount = 1): void {
+  if (!legalDamageTargets(state).includes(targetId)) {
+    log(state, "That demon cannot be targeted.");
+    return;
+  }
   dealDamageToDemon(state, targetId, amount ?? 1, playerId);
 }
 

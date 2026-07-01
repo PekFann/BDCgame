@@ -1,7 +1,7 @@
 import type { CardDefinition, ManifestPreview } from "../../../shared/types.js";
 import type { GameState, PlayerState } from "../../../shared/types.js";
 import { getCard } from "../../../shared/cards.js";
-import { findDemon, getEffectiveAttack, getPlayer, meetsFriendshipRequirement } from "../rules.js";
+import { findDemon, getEffectiveAttack, getPlayer, meetsFriendshipRequirement, canTargetDemon, legalDamageTargets } from "../rules.js";
 import { clamp, log, makeInstance, rollD6 } from "../util.js";
 import { resolveEventEffect, resolveTriggerEffect } from "./triggers.js";
 
@@ -116,18 +116,42 @@ export function damagePossessed(state: GameState, amount: number, source?: strin
   if (state.imps.some((i) => getCard(i.cardId).effectId === "imp_self_doubt")) {
     applyPossessedTrigger(state, state.diceRollerId ?? state.players[0].id);
   }
+  if (state.possessedHp <= 0 && tryAutoResurrection(state)) return;
   checkGameOver(state);
+}
+
+export function tryAutoResurrection(state: GameState): boolean {
+  if (state.possessedHp > 0) return false;
+
+  const candidates = state.players
+    .filter((p) =>
+      p.hand.some((c) => getCard(c.cardId).effectId === "resurrection") &&
+      meetsFriendshipRequirement(state, p)
+    )
+    .sort((a, b) => {
+      if (a.isHuman !== b.isHuman) return a.isHuman ? -1 : 1;
+      return a.slot - b.slot;
+    });
+
+  const player = candidates[0];
+  if (!player) return false;
+
+  const card = player.hand.find((c) => getCard(c.cardId).effectId === "resurrection");
+  if (!card) return false;
+
+  removeFromHandToDiscard(state, player, card.instanceId);
+  state.possessedHp = 1;
+  log(state, `${player.name}'s Resurrection saves the Possessed!`);
+  return true;
 }
 
 export function dealDamageToDemon(state: GameState, targetId: string, amount: number, sourcePlayerId?: string): void {
   if (amount <= 0) return;
   const demon = findDemon(state, targetId);
   if (!demon || demon.hp <= 0) return;
-  if (getCard(demon.cardId).effectId === "imp_selfish") {
-    if (!state.demonRevealed && state.demon && state.demon.hp > 10) {
-      log(state, "Selfish Imp cannot be damaged yet.");
-      return;
-    }
+  if (!canTargetDemon(state, demon)) {
+    log(state, "That demon cannot be targeted.");
+    return;
   }
   demon.hp = Math.max(0, demon.hp - amount);
   log(state, `${getCard(demon.cardId).name} takes ${amount} damage.`);
@@ -151,9 +175,8 @@ export function dealDamageToDemon(state: GameState, targetId: string, amount: nu
 }
 
 export function dealDamageToAllDemons(state: GameState, amount: number): void {
-  if (state.demon) dealDamageToDemon(state, state.demon.instanceId, amount);
-  for (const imp of [...state.imps]) {
-    dealDamageToDemon(state, imp.instanceId, amount);
+  for (const id of legalDamageTargets(state)) {
+    dealDamageToDemon(state, id, amount);
   }
 }
 
@@ -387,7 +410,8 @@ export function canPlayCard(state: GameState, player: PlayerState, cardId: strin
   if ((def.friendshipCost ?? 0) > player.friendship) return false;
   if (def.requiresFriendship && !meetsFriendshipRequirement(state, player)) return false;
   if (def.effectId === "talk_it_out" && state.demonRevealed) return false;
-  if (def.effectId === "resurrection" && state.possessedHp > 0) return false;
+  if (def.effectId === "resurrection") return false;
+  if (def.effectId === "time_travel" && state.lastDiceRoll === null) return false;
   return true;
 }
 

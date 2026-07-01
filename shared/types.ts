@@ -121,6 +121,22 @@ export interface ManifestPreview {
 
 export type TriggerOutcome = "trigger" | "neutral" | "event";
 
+export interface PendingRerollPrompt {
+  roll: number;
+  rollerId: string;
+  context: "trigger" | "card";
+  queue: { playerId: string; isHuman: boolean; name: string }[];
+  queueIndex: number;
+  awaitingPlayerId: string | null;
+}
+
+export interface PendingCardRollResume {
+  effectId: string;
+  playerId: string;
+  cardInstanceId?: string;
+  targetId?: string;
+}
+
 export type PresentationHold =
   | { at: "post_draw" }
   | { at: "manifest"; preview: ManifestPreview }
@@ -183,6 +199,9 @@ export interface GameState {
   declinedAiPlayIds: Set<string>;
   presentationHold: PresentationHold | null;
   introAcknowledged: boolean;
+  pendingRerollPrompt: PendingRerollPrompt | null;
+  pendingCardRollResume: PendingCardRollResume | null;
+  pendingRerollTimeTravelId: string | null;
 }
 
 export interface PublicPlayerState {
@@ -195,6 +214,7 @@ export interface PublicPlayerState {
   friendship: number;
   handCount: number;
   persistentCount: number;
+  persistentCards: CardInstance[];
   restVote: boolean | null;
   drawChoice: DrawChoice | null;
   usedPhaseAction: boolean;
@@ -237,13 +257,27 @@ export interface PublicGameState {
   currentDncDayTotal: number;
   currentDncNightTotal: number;
   currentDncPhases: DncCyclePhase[];
+  pendingRerollPrompt: PendingRerollPrompt | null;
 }
+
+export type DiscussionCategory =
+  | "heal"
+  | "damage"
+  | "friendship"
+  | "reveal"
+  | "energy"
+  | "utility";
 
 export interface DiscussionSuggestion {
   playerId: string;
   playerName: string;
   cardInstanceId: string;
   cardId: string;
+  score: number;
+  rationale: string;
+  category: DiscussionCategory;
+  energyCost: number;
+  friendshipCost: number;
 }
 
 export interface TeamHandView {
@@ -278,7 +312,10 @@ export type GameAction =
   | { type: "SKIP_AI_PLAY" }
   | { type: "ACK_PRESENTATION" }
   | { type: "ACK_GAME_INTRO" }
-  | { type: "PLAY_DISCUSSED_CARD"; ownerPlayerId: string; cardInstanceId: string };
+  | { type: "PLAY_DISCUSSED_CARD"; ownerPlayerId: string; cardInstanceId: string }
+  | { type: "ACCEPT_REROLL" }
+  | { type: "DECLINE_REROLL" }
+  | { type: "USE_LIGHTHOUSE"; discardInstanceId: string };
 
 export interface RoomInfo {
   id: string;

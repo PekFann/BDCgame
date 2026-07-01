@@ -15,7 +15,6 @@ import type {
   PresentationHold,
   PrivateGameState,
   PublicGameState,
-  TriggerOutcome,
 } from "../../shared/types.js";
 import {
   resolveDiscardEffect,
@@ -29,15 +28,15 @@ import {
   applyPossessedTrigger,
   canPlayCard,
   checkGameOver,
+  computeManifestPreview,
   drawEventCard,
   drawForPlayer,
   gainEnergy,
   gainFriendship,
-  peekEventCardId,
 } from "./effects/primitives.js";
 import { resolveEventPickOne } from "./effects/triggers.js";
 import { defaultModifiers, getPossessedRequirement, meetsFriendshipRequirement, resetCycleModifiers, canVoteRest, restEligiblePlayers } from "./rules.js";
-import { log, makeInstance, rollD6, shuffle } from "./util.js";
+import { log, makeInstance, shuffle } from "./util.js";
 import { getLegalActions, pickAiDrawChoice, runAiTurns, getDiscussionSuggestions } from "./ai.js";
 import {
   advanceDncPhase,
@@ -46,6 +45,13 @@ import {
   getDncPhases,
   resetDayNightVoteState,
 } from "./phases.js";
+import {
+  acceptReroll,
+  beginDiceRoll,
+  completeRerollAfterDiscard,
+  declineReroll,
+  hasPendingReroll,
+} from "./dice-reroll.js";
 
 export function createEmptyGame(mode: "solo" | "multi"): GameState {
   return {
@@ -86,6 +92,9 @@ export function createEmptyGame(mode: "solo" | "multi"): GameState {
     declinedAiPlayIds: new Set(),
     presentationHold: null,
     introAcknowledged: false,
+    pendingRerollPrompt: null,
+    pendingCardRollResume: null,
+    pendingRerollTimeTravelId: null,
   };
 }
 
@@ -176,6 +185,7 @@ export function processAi(state: GameState): void {
   if (state.phase === "game_over") return;
   if (state.pendingAiPlay) return;
   if (state.presentationHold) return;
+  if (hasPendingReroll(state)) return;
   runAiTurns(state, (playerId, action) => {
     try {
       applyActionInternal(state, playerId, action);
@@ -258,8 +268,13 @@ function applyActionInternal(state: GameState, playerId: string, action: GameAct
       state.pendingChoice = null;
       break;
     case "DISCARD_CARDS":
-      resolveDiscardEffect(state, playerId, action.cardInstanceIds);
-      state.pendingChoice = null;
+      if (hasPendingReroll(state) && state.pendingChoice?.kind === "discard_cards") {
+        completeRerollAfterDiscard(state, playerId, action.cardInstanceIds);
+        state.pendingChoice = null;
+      } else {
+        resolveDiscardEffect(state, playerId, action.cardInstanceIds);
+        state.pendingChoice = null;
+      }
       break;
     case "DISTRIBUTE_ENERGY":
       resolveEnergyDistribution(state, action.distribution);
@@ -274,19 +289,40 @@ function applyActionInternal(state: GameState, playerId: string, action: GameAct
     case "ACK_GAME_INTRO":
       handleAckGameIntro(state, playerId);
       break;
+    case "ACCEPT_REROLL":
+      acceptReroll(state, playerId);
+      break;
+    case "DECLINE_REROLL":
+      declineReroll(state, playerId);
+      break;
+    case "USE_LIGHTHOUSE":
+      handleUseLighthouse(state, playerId, action.discardInstanceId);
+      break;
     default:
       break;
   }
   maybeAdvancePhase(state);
 }
 
-function maybeAdvancePhase(state: GameState): void {
-  if (state.pendingChoice || state.pendingAiPlay || state.presentationHold || state.winner) return;
-  if (state.phase === "day" && state.dayActionsRemaining <= 0) {
-    advancePhase(state);
-  } else if (state.phase === "night" && state.nightActionsRemaining <= 0) {
-    advancePhase(state);
+function maybeAdvancePhase(_state: GameState): void {
+  // Day/night end only via explicit ADVANCE_PHASE so instants remain playable at 0 actions.
+}
+
+function handleUseLighthouse(state: GameState, playerId: string, discardInstanceId: string): void {
+  if (state.phase !== "manifest" || state.presentationHold?.at !== "manifest") {
+    throw new Error("Lighthouse can only be used during manifest");
   }
+  const player = state.players.find((p) => p.id === playerId);
+  if (!player) throw new Error("Player not found");
+  const hasLighthouse = player.persistentCards.some((c) => getCard(c.cardId).effectId === "lighthouse");
+  if (!hasLighthouse) throw new Error("No Lighthouse in play");
+  const discard = player.hand.find((c) => c.instanceId === discardInstanceId);
+  if (!discard) throw new Error("Card not in hand");
+  player.hand = player.hand.filter((c) => c.instanceId !== discardInstanceId);
+  state.actionDiscard.push(discard);
+  state.modifiers.manifestDamageBlock += 1;
+  log(state, `${player.name} uses Lighthouse to block 1 manifest damage.`);
+  state.presentationHold = { at: "manifest", preview: computeManifestPreview(state) };
 }
 
 export function applyAction(state: GameState, playerId: string, action: GameAction): void {
@@ -295,6 +331,7 @@ export function applyAction(state: GameState, playerId: string, action: GameActi
   if (
     state.presentationHold &&
     action.type !== "ACK_PRESENTATION" &&
+    action.type !== "USE_LIGHTHOUSE" &&
     !isIntroAck
   ) {
     throw new Error("Finish presentation first");
@@ -317,6 +354,15 @@ export function applyAction(state: GameState, playerId: string, action: GameActi
     !isIntroAck
   ) {
     throw new Error("Resolve pending choice first");
+  }
+  if (
+    hasPendingReroll(state) &&
+    action.type !== "ACCEPT_REROLL" &&
+    action.type !== "DECLINE_REROLL" &&
+    action.type !== "DISCARD_CARDS" &&
+    !isIntroAck
+  ) {
+    throw new Error("Resolve reroll offer first");
   }
   applyActionInternal(state, playerId, action);
   processAi(state);
@@ -530,23 +576,8 @@ function handleRestVote(state: GameState, playerId: string, vote: boolean): void
 
 function handleTriggerRoll(state: GameState, playerId: string): void {
   if (state.phase !== "triggers") return;
-  if (state.presentationHold) return;
-  const dnc = state.currentDncId ? DNC[state.currentDncId] : null;
-  const roll = rollD6();
-  state.lastDiceRoll = roll;
-  state.diceRollerId = playerId;
-  log(state, `Dice rolled: ${roll}`);
-
-  let outcome: TriggerOutcome = "neutral";
-  let eventCardId: string | undefined;
-  if (dnc?.triggerDice.includes(roll)) {
-    outcome = "trigger";
-  } else if (dnc?.eventDice.includes(roll)) {
-    outcome = "event";
-    eventCardId = peekEventCardId(state) ?? undefined;
-  }
-
-  state.presentationHold = { at: "post_trigger_roll", roll, outcome, eventCardId };
+  if (state.presentationHold || hasPendingReroll(state)) return;
+  beginDiceRoll(state, playerId, "trigger");
 }
 
 function advancePhase(state: GameState): void {
@@ -602,6 +633,7 @@ export function toPublicState(state: GameState): PublicGameState {
       friendship: p.friendship,
       handCount: p.hand.length,
       persistentCount: p.persistentCards.length,
+      persistentCards: p.persistentCards.map((c) => ({ instanceId: c.instanceId, cardId: c.cardId })),
       restVote: p.restVote,
       drawChoice: p.drawChoice,
       usedPhaseAction: p.usedPhaseAction,
@@ -625,6 +657,7 @@ export function toPublicState(state: GameState): PublicGameState {
     currentDncDayTotal: state.currentDncId ? (DNC[state.currentDncId]?.dayActions ?? 0) : 0,
     currentDncNightTotal: state.currentDncId ? (DNC[state.currentDncId]?.nightActions ?? 0) : 0,
     currentDncPhases: getDncPhases(state) as DncCyclePhase[],
+    pendingRerollPrompt: state.pendingRerollPrompt,
   };
 }
 

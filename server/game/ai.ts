@@ -1,14 +1,30 @@
-import type { DiscussionSuggestion, DrawChoice, GameAction, GameState, PlayerState } from "../../shared/types.js";
+import type { DrawChoice, GameAction, GameState, PlayerState } from "../../shared/types.js";
 import { getCard } from "../../shared/cards.js";
 import {
   canPlayCard,
   canPlayCardInCurrentPhase,
 } from "./effects/primitives.js";
-import { meetsFriendshipRequirement, canVoteRest } from "./rules.js";
+import { canVoteRest } from "./rules.js";
+import { getDiscussionSuggestions, pickSuggestedCard } from "./discussion-strategy.js";
+
+export { getDiscussionSuggestions, pickSuggestedCard };
 
 export function getLegalActions(state: GameState, player: PlayerState): GameAction[] {
   const actions: GameAction[] = [];
   if (state.phase === "game_over" || !state.started) return actions;
+
+  if (state.pendingRerollPrompt && !state.pendingChoice) {
+    const awaiting = state.pendingRerollPrompt.awaitingPlayerId;
+    const canRespond =
+      player.isHuman &&
+      awaiting &&
+      (awaiting === player.id || !state.players.find((p) => p.id === awaiting)?.isHuman);
+    if (canRespond) {
+      actions.push({ type: "ACCEPT_REROLL" });
+      actions.push({ type: "DECLINE_REROLL" });
+    }
+    return actions;
+  }
 
   if (state.presentationHold && player.isHuman) {
     actions.push({ type: "ACK_PRESENTATION" });
@@ -34,6 +50,7 @@ export function getLegalActions(state: GameState, player: PlayerState): GameActi
     state.phase === "triggers" &&
     state.lastDiceRoll === null &&
     !state.presentationHold &&
+    !state.pendingRerollPrompt &&
     (state.mode !== "solo" || player.isHuman)
   ) {
     actions.push({ type: "ROLL_DICE" });
@@ -70,6 +87,7 @@ export function getLegalActions(state: GameState, player: PlayerState): GameActi
         cardInstanceIds: [player.hand[0].instanceId],
       });
     }
+    if (state.pendingRerollPrompt) return actions;
   }
 
   return actions;
@@ -81,45 +99,6 @@ function hasPlayableCard(state: GameState, player: PlayerState): boolean {
 
 export function pickAiDrawChoice(player: PlayerState): DrawChoice {
   return player.hand.length < 5 ? "card_and_energy" : "friendship";
-}
-
-export function pickSuggestedCard(state: GameState, player: PlayerState): string | null {
-  const hand = player.hand.filter((c) => !state.declinedAiPlayIds.has(c.instanceId));
-  const score = (cardId: string) => {
-    const def = getCard(cardId);
-    if (!canPlayCard(state, player, cardId)) return -1;
-    if (!canPlayCardInCurrentPhase(state, def)) return -1;
-    if (def.effectId === "resurrection" && state.possessedHp <= 0) return 100;
-    if (!state.demonRevealed && def.effectId === "talk_it_out" && meetsFriendshipRequirement(state, player)) return 90;
-    if (!state.demonRevealed && ["caring", "good_old_days", "tea_for_two"].includes(def.effectId)) return 70;
-    if (state.possessedHp < state.possessedMaxHp * 0.4 && ["caring", "healthy_meal"].includes(def.effectId)) return 65;
-    if (state.demonRevealed && ["prayer", "sharp_truth", "fast_and_pray"].includes(def.effectId)) return 60;
-    if (def.instant && def.effectId === "healthy_meal" && player.energy <= 2) return 50;
-    return def.cycleIcon ? 10 : 5;
-  };
-  hand.sort((a, b) => score(b.cardId) - score(a.cardId));
-  const best = hand.find((c) => score(c.cardId) > 0);
-  return best?.instanceId ?? null;
-}
-
-export function getDiscussionSuggestions(state: GameState): DiscussionSuggestion[] {
-  if (state.phase !== "day" && state.phase !== "night") return [];
-
-  const suggestions: DiscussionSuggestion[] = [];
-  for (const player of state.players) {
-    if (player.usedPhaseAction) continue;
-    const instanceId = pickSuggestedCard(state, player);
-    if (!instanceId) continue;
-    const card = player.hand.find((c) => c.instanceId === instanceId);
-    if (!card) continue;
-    suggestions.push({
-      playerId: player.id,
-      playerName: player.name,
-      cardInstanceId: instanceId,
-      cardId: card.cardId,
-    });
-  }
-  return suggestions;
 }
 
 export function pickAiAction(state: GameState, player: PlayerState): GameAction | null {
@@ -176,6 +155,7 @@ export function runAiTurns(state: GameState, apply: (playerId: string, action: G
     if (
       state.phase === "game_over" ||
       state.presentationHold ||
+      state.pendingRerollPrompt ||
       (state.pendingChoice?.playerId &&
         state.players.find((p) => p.id === state.pendingChoice!.playerId)?.isHuman)
     ) {

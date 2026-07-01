@@ -3,6 +3,7 @@ import {
   createSoloRoom,
   fetchPossessedOptions,
   GameClient,
+  bindBoardAttachments,
   bindPlayerRoster,
   getHumanPlayerId,
   getTeamHand,
@@ -43,10 +44,17 @@ import {
   setGameIntroSend,
 } from "./game-start-modal.js";
 import { refreshTriggerRollModal, resetTriggerRollModal } from "./trigger-roll-modal.js";
+import { refreshTimeTravelModal, resetTimeTravelModal } from "./time-travel-modal.js";
+import { refreshDemonTargetModal, resetDemonTargetModal } from "./demon-target-modal.js";
+import { refreshHandDiscardModal, resetHandDiscardModal } from "./hand-discard-modal.js";
+import { playBoardDamageVfx, resetBoardDamageVfx } from "./board-damage-vfx.js";
+import { initFullscreenButton } from "./fullscreen.js";
+import { runFriendshipGainVfx } from "./friendship-vfx.js";
+import { isInputLocked } from "./input-lock.js";
 import { handlePresentationUpdate, resetPresentationLock } from "./phase-orchestrator.js";
 import { refreshPhaseToast, resetPhaseToast } from "./phase-toast.js";
 
-const SOLO_BUILD = "2025-07-01-dice-discard-cycle2";
+const SOLO_BUILD = "2025-07-01-trigger-ux-polish";
 console.info(`[bdc-solo] loaded ${SOLO_BUILD}`);
 
 const client = new GameClient();
@@ -55,6 +63,16 @@ let gameStartedResolve: (() => void) | null = null;
 let gameStartedReject: ((err: Error) => void) | null = null;
 let selectedPlayerId = "";
 let lastRenderedCycle = 0;
+let prevHumanFriendship: number | null = null;
+
+function maybeTriggerFriendshipVfx(pub: PublicGameState, humanPlayerId: string): void {
+  const human = pub.players.find((p) => p.id === humanPlayerId);
+  if (!human) return;
+  if (prevHumanFriendship !== null && human.friendship > prevHumanFriendship) {
+    void runFriendshipGainVfx(human.friendship - prevHumanFriendship);
+  }
+  prevHumanFriendship = human.friendship;
+}
 let drawIdleRetryScheduled = false;
 
 function showSetupError(message: string): void {
@@ -138,11 +156,15 @@ function renderBoardWithRoster(
 ): void {
   const board = document.getElementById("board")!;
   const viewingId = resolveViewingPlayerId(pub, humanPlayerId);
-  renderBoard(board, pub, viewingId);
+  renderBoard(board, pub, viewingId, humanPlayerId);
+  playBoardDamageVfx(board, pub);
   bindPlayerRoster(board, (playerId) => {
     selectedPlayerId = playerId;
     renderGameUI();
   });
+  if (priv && send) {
+    bindBoardAttachments(board, pub, priv, humanPlayerId, send);
+  }
   if (priv) {
     renderBoardEventChoice(board, pub, priv, humanPlayerId, send);
   }
@@ -180,10 +202,12 @@ function renderSelectedHand(
 
   const handCtx: HandRenderContext = {
     phase: pub.phase,
+    pub,
     priv,
     humanPlayerId,
     viewingPlayerId: viewingId,
     onCardClick: (card: CardInstance) => {
+      if (isInputLocked()) return;
       if (viewingId !== humanPlayerId) return;
       openCardModal(card, modalCtx);
     },
@@ -219,7 +243,7 @@ function renderSelectedHand(
       capturedPrev,
       currentHand,
       (handToShow) => renderHand(handEl, handToShow, handCtx),
-      (card) => getHandCardVisualClass(pub.phase, card.cardId),
+      (card) => getHandCardVisualClass(pub.phase, card.cardId, pub),
       handCtx
     ).then(() => {
       setPrevHandIdsForPlayer(viewingId, currentHand);
@@ -245,6 +269,9 @@ function refreshGameplayModals(
   refreshCardModalIfOpen(modalCtx);
   refreshDrawPhaseModal(pub, humanPlayerId, send);
   refreshTriggerRollModal(pub, priv, send);
+  refreshTimeTravelModal(pub, priv, send);
+  refreshHandDiscardModal(pub, priv, send, humanPlayerId);
+  refreshDemonTargetModal(pub, priv, send);
   refreshPhaseToast(pub);
 }
 
@@ -260,10 +287,14 @@ function kickOffIntroIfNeeded(
 
   const introHandCtx: HandRenderContext = {
     phase: pub.phase,
+    pub,
     priv,
     humanPlayerId,
     viewingPlayerId: humanPlayerId,
-    onCardClick: (card: CardInstance) => openCardModal(card, modalCtx),
+    onCardClick: (card: CardInstance) => {
+      if (isInputLocked()) return;
+      openCardModal(card, modalCtx);
+    },
   };
 
   void runGameIntroIfNeeded(pub, {
@@ -308,10 +339,14 @@ function paintStaticHand(
   const modalCtx = { pub, priv, send, humanPlayerId };
   const handCtx: HandRenderContext = {
     phase: pub.phase,
+    pub,
     priv,
     humanPlayerId,
     viewingPlayerId: humanPlayerId,
-    onCardClick: (card: CardInstance) => openCardModal(card, modalCtx),
+    onCardClick: (card: CardInstance) => {
+      if (isInputLocked()) return;
+      openCardModal(card, modalCtx);
+    },
   };
   renderHand(handEl, priv.hand, handCtx);
   setPrevHandIdsForPlayer(humanPlayerId, priv.hand);
@@ -326,6 +361,7 @@ function renderGameUI(): void {
   const send = (a: Parameters<typeof client.sendAction>[0]) => client.sendAction(a);
   setGameIntroSend(send);
   const humanPlayerId = getHumanPlayerId(pub);
+  maybeTriggerFriendshipVfx(pub, humanPlayerId);
   const modalCtx = { pub, priv, send, humanPlayerId };
   const handEl = document.getElementById("hand")!;
   const actionsEl = document.getElementById("actions")!;
@@ -402,10 +438,14 @@ async function init() {
   resetPresentationLock();
   resetDrawAnimationState();
   resetTriggerRollModal();
+  resetTimeTravelModal();
+  resetDemonTargetModal();
   resetPhaseToast();
   lastRenderedCycle = 0;
+  prevHumanFriendship = null;
   drawIdleRetryScheduled = false;
   selectedPlayerId = "";
+  initFullscreenButton();
 
   const possessedSelect = document.getElementById("possessed") as HTMLSelectElement;
   const startBtn = document.getElementById("startBtn") as HTMLButtonElement;
@@ -498,7 +538,12 @@ async function init() {
       resetPresentationLock();
       resetDrawAnimationState();
       resetTriggerRollModal();
+      resetTimeTravelModal();
+      resetDemonTargetModal();
+      resetHandDiscardModal();
+      resetBoardDamageVfx();
       resetPhaseToast();
+      prevHumanFriendship = null;
       roomId = await createSoloRoom();
       await client.connect({ roomId, role: "solo", slot: 1, name: "You" });
       client.startGame(possessedId, playerCount);

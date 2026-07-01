@@ -83,6 +83,7 @@ export function findDemon(state: GameState, targetId: string) {
 
 export function canTargetDemon(state: GameState, demon: { instanceId: string; cardId: string; revealed: boolean; isImp: boolean; hp: number }) {
   const def = getCard(demon.cardId);
+  if (!demon.isImp && !state.demonRevealed) return false;
   if (def.effectId === "imp_selfish") {
     if (!state.demonRevealed && state.demon && state.demon.hp > 10) return false;
     if (state.demon && state.demon.hp > 10 && !demon.isImp) return false;
@@ -92,6 +93,17 @@ export function canTargetDemon(state: GameState, demon: { instanceId: string; ca
     if (stubborn) return false;
   }
   return demon.hp > 0;
+}
+
+export function legalDamageTargets(state: GameState): string[] {
+  const ids: string[] = [];
+  if (state.demon && canTargetDemon(state, state.demon)) {
+    ids.push(state.demon.instanceId);
+  }
+  for (const imp of state.imps) {
+    if (canTargetDemon(state, imp)) ids.push(imp.instanceId);
+  }
+  return ids;
 }
 
 export function getEffectiveAttack(state: GameState, demon: { attack: number; cardId: string }) {

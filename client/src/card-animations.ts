@@ -244,7 +244,7 @@ export async function runDrawAnimations(
 
     ((card) =>
 
-      handCtx ? getHandCardVisualClass(handCtx.phase, card.cardId) : ("unplayable" as const));
+      handCtx ? getHandCardVisualClass(handCtx.phase, card.cardId, handCtx.pub) : ("unplayable" as const));
 
   const newCards = hand.filter((c) => !prevIds.has(c.instanceId));
 

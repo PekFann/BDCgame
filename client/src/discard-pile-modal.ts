@@ -83,20 +83,22 @@ export function renderDiscardPileSlot(el: HTMLElement, pub: PublicGameState): vo
   const discard = getActionDiscard(pub);
   const count = getActionDiscardCount(pub);
   const top = discard[discard.length - 1];
+  const hasCards = count > 0;
 
   const btn = document.createElement("button");
   btn.type = "button";
-  btn.className = discard.length > 0 ? "hand-discard-pile" : "hand-discard-pile hand-discard-pile-empty";
+  btn.className = hasCards ? "hand-discard-pile" : "hand-discard-pile hand-discard-pile-empty";
   btn.title =
     count === 0
       ? "Browse action discard (empty)"
       : `Browse action discard (${count})`;
 
-  if (discard.length > 0 && top) {
+  if (hasCards) {
+    const topImg = top ? cardImg(top.cardId) : cardImg("action_01");
     btn.innerHTML = `
     <span class="hand-discard-stack">
       <span class="discard-card-back" aria-hidden="true"></span>
-      <img class="discard-top-card" src="${cardImg(top.cardId)}" alt="" />
+      <img class="discard-top-card" src="${topImg}" alt="" />
     </span>
     <span class="hand-discard-count">${count}</span>
   `;

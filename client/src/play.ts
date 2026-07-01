@@ -14,6 +14,12 @@ import { ensureCardModal, openCardModal, refreshCardModalIfOpen } from "./card-m
 import { refreshDrawPhaseModal } from "./draw-phase-modal.js";
 import { handlePresentationUpdate } from "./phase-orchestrator.js";
 import { refreshTriggerRollModal } from "./trigger-roll-modal.js";
+import { refreshTimeTravelModal } from "./time-travel-modal.js";
+import { refreshDemonTargetModal } from "./demon-target-modal.js";
+import { refreshHandDiscardModal } from "./hand-discard-modal.js";
+import { initFullscreenButton } from "./fullscreen.js";
+import { runFriendshipGainVfx } from "./friendship-vfx.js";
+import { isInputLocked } from "./input-lock.js";
 import {
   isGameIntroDismissed,
   onGameIntroDismissed,
@@ -34,7 +40,18 @@ const name = params.get("name") ?? `Player ${slot}`;
 
 const client = new GameClient();
 let selectedPlayerId = "";
+let prevHumanFriendship: number | null = null;
 ensureCardModal();
+initFullscreenButton();
+
+function maybeTriggerFriendshipVfx(pub: PublicGameState, humanPlayerId: string): void {
+  const human = pub.players.find((p) => p.id === humanPlayerId);
+  if (!human) return;
+  if (prevHumanFriendship !== null && human.friendship > prevHumanFriendship) {
+    void runFriendshipGainVfx(human.friendship - prevHumanFriendship);
+  }
+  prevHumanFriendship = human.friendship;
+}
 
 function resolveViewingPlayerId(humanId: string, players: { id: string }[]): string {
   if (!selectedPlayerId) return humanId;
@@ -50,6 +67,7 @@ function renderPhoneUI(): void {
   const human = pub.players.find((p) => p.slot === slot - 1);
   if (!human) return;
 
+  maybeTriggerFriendshipVfx(pub, human.id);
   const send = (a: Parameters<typeof client.sendAction>[0]) => client.sendAction(a);
   setGameIntroSend(send);
   const viewingId = resolveViewingPlayerId(human.id, pub.players);
@@ -67,10 +85,12 @@ function renderPhoneUI(): void {
   const handLabelEl = document.getElementById("hand-label")!;
   const handCtx = {
     phase: pub.phase,
+    pub,
     priv,
     humanPlayerId: human.id,
     viewingPlayerId: viewingId,
     onCardClick: (card: CardInstance) => {
+      if (isInputLocked()) return;
       if (viewingId !== human.id) return;
       openCardModal(card, modalCtx);
     },
@@ -152,6 +172,9 @@ function renderPhoneUI(): void {
     refreshCardModalIfOpen(modalCtx);
     refreshDrawPhaseModal(pub, human.id, send);
     refreshTriggerRollModal(pub, priv, send);
+    refreshTimeTravelModal(pub, priv, send);
+    refreshHandDiscardModal(pub, priv, send, human.id);
+    refreshDemonTargetModal(pub, priv, send);
 
     if (pub.presentationHold) {
       void handlePresentationUpdate(pub, {
@@ -180,6 +203,9 @@ client.connect({ roomId, role: "player", slot, name }).then(() => {
     const send = (a: Parameters<typeof client.sendAction>[0]) => client.sendAction(a);
     refreshDrawPhaseModal(pub, human.id, send);
     refreshTriggerRollModal(pub, priv, send);
+    refreshTimeTravelModal(pub, priv, send);
+    refreshHandDiscardModal(pub, priv, send, human.id);
+    refreshDemonTargetModal(pub, priv, send);
   });
 
   client.onStateUpdate((pub, priv) => {

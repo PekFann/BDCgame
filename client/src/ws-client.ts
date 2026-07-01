@@ -2,6 +2,7 @@ import type { GameAction, PrivateGameState, PublicGameState, CardInstance, Phase
 import cardsData from "../../data/cards.json";
 import { openDiscussionModal } from "./discussion-modal.js";
 import { isGameIntroDismissed } from "./game-start-modal.js";
+import { isInputLocked } from "./input-lock.js";
 
 type StateHandler = (pub: PublicGameState, priv?: PrivateGameState) => void;
 type ErrorHandler = (message: string) => void;
@@ -18,12 +19,30 @@ const cardInstantById = Object.fromEntries(
   (cardsData as { id: string; instant?: boolean }[]).map((c) => [c.id, !!c.instant])
 );
 
+const cardEffectById = Object.fromEntries(
+  (cardsData as { id: string; effectId?: string }[]).map((c) => [c.id, c.effectId ?? ""])
+);
+
 export function getHandCardVisualClass(
   phase: Phase,
-  cardId: string
-): "playable" | "unplayable" {
-  if (phase === "day" || phase === "night") return "playable";
-  return cardInstantById[cardId] ? "playable" : "unplayable";
+  cardId: string,
+  pub?: PublicGameState
+): "playable" | "unplayable" | "actions-spent" {
+  const isInstant = cardInstantById[cardId];
+  const isCycleAction = (cardsData as { id: string; cycleIcon?: boolean }[]).some(
+    (c) => c.id === cardId && c.cycleIcon
+  );
+
+  if (phase === "day" || phase === "night") {
+    if (pub) {
+      const noActions =
+        (phase === "day" && pub.dayActionsRemaining <= 0) ||
+        (phase === "night" && pub.nightActionsRemaining <= 0);
+      if (noActions && isCycleAction && !isInstant) return "actions-spent";
+    }
+    return "playable";
+  }
+  return isInstant ? "playable" : "unplayable";
 }
 
 
@@ -34,6 +53,17 @@ export function formatPhaseActionLabel(
 ): string {
   const name = phase === "day" ? "Day" : "Night";
   return `${name} ${remaining}/${total}`;
+}
+
+export function formatEndPhaseButtonLabel(
+  phase: "day" | "night",
+  remaining: number,
+  hasInstantPlays: boolean
+): string {
+  const name = phase === "day" ? "Day" : "Night";
+  if (remaining > 0) return `End ${name} Phase (${remaining} left)`;
+  if (hasInstantPlays) return `End ${name} Phase (instants OK)`;
+  return `End ${name} Phase`;
 }
 
 function renderDncPhaseBands(pub: PublicGameState): string {
@@ -367,9 +397,72 @@ type RosterPlayer = {
   isConnected: boolean;
   energy: number;
   friendship: number;
+  handCount?: number;
+  persistentCards?: CardInstance[];
 };
 
-export function renderPlayerRoster(players: RosterPlayer[], selectedPlayerId?: string): string {
+function findPersistentByEffect(player: RosterPlayer, effectId: string): CardInstance | undefined {
+  return player.persistentCards?.find((c) => cardEffectById[c.cardId] === effectId);
+}
+
+function findTrumpetOnTeam(players: RosterPlayer[]): CardInstance | undefined {
+  for (const p of players) {
+    const t = findPersistentByEffect(p, "trumpet_of_victory");
+    if (t) return t;
+  }
+  return undefined;
+}
+
+function renderTrumpetAttachment(players: RosterPlayer[]): string {
+  const trumpet = findTrumpetOnTeam(players);
+  if (!trumpet) return "";
+  return `
+    <div class="board-attachment trumpet-attachment" title="Trumpet of Victory">
+      <img src="${cardImg(trumpet.cardId)}" alt="${cardName(trumpet.cardId)}" />
+    </div>`;
+}
+
+function renderImpAttachments(
+  imps: { instanceId: string; cardId: string; hp: number }[]
+): string {
+  if (!imps.length) return "";
+  return imps
+    .map(
+      (i) => `
+    <div class="board-attachment imp-attachment" data-imp-id="${i.instanceId}" title="${cardName(i.cardId)}">
+      <img src="${cardImg(i.cardId)}" alt="${cardName(i.cardId)}" />
+      <span class="attachment-hp">${i.hp}</span>
+    </div>`
+    )
+    .join("");
+}
+
+function rosterLighthouseMarkup(
+  player: RosterPlayer,
+  pub: PublicGameState,
+  humanPlayerId: string
+): string {
+  const lighthouse = findPersistentByEffect(player, "lighthouse");
+  if (!lighthouse) return "";
+  const canUse =
+    player.id === humanPlayerId &&
+    pub.phase === "manifest" &&
+    pub.presentationHold?.at === "manifest";
+  const tag = canUse ? "button" : "span";
+  const extra = canUse
+    ? ` type="button" class="lighthouse-attachment is-active" data-player-id="${player.id}" title="Lighthouse — discard 1 to block 1 manifest damage"`
+    : ` class="lighthouse-attachment" title="Lighthouse"`;
+  return `
+    <${tag}${extra}>
+      <img src="${cardImg(lighthouse.cardId)}" alt="Lighthouse" />
+    </${tag}>`;
+}
+
+export function renderPlayerRoster(
+  players: RosterPlayer[],
+  selectedPlayerId?: string,
+  rosterCtx?: { pub: PublicGameState; humanPlayerId: string }
+): string {
   return `
     <div class="player-roster">
       ${players
@@ -380,6 +473,8 @@ export function renderPlayerRoster(players: RosterPlayer[], selectedPlayerId?: s
           <span class="player-roster-values">
             <span class="roster-stat" title="Energy"><img class="roster-stat-icon" src="${ENERGY_ICON}" alt="Energy" />${p.energy}</span>
             <span class="roster-stat" title="Friendship"><img class="roster-stat-icon" src="${FRIENDSHIP_ICON}" alt="Friendship" />${p.friendship}</span>
+            ${p.handCount != null ? `<span class="roster-stat roster-hand" title="Hand cards">${p.handCount} cards</span>` : ""}
+            ${rosterCtx ? rosterLighthouseMarkup(p, rosterCtx.pub, rosterCtx.humanPlayerId) : ""}
           </span>
         </div>`
         )
@@ -401,6 +496,81 @@ export function bindPlayerRoster(root: HTMLElement, onSelect: (playerId: string)
   });
 }
 
+export function openLighthouseDiscardModal(
+  priv: PrivateGameState,
+  send: (a: GameAction) => void
+): void {
+  if (!priv.hand.length) return;
+
+  const modal = document.createElement("div");
+  modal.className = "card-modal lighthouse-discard-modal";
+  modal.innerHTML = `
+    <div class="card-modal-backdrop modal-overlay"></div>
+    <div class="lighthouse-discard-panel modal-panel">
+      <h3 class="card-modal-title">Lighthouse</h3>
+      <p class="card-modal-effect">Discard 1 card to block 1 manifest damage.</p>
+      <div class="lighthouse-hand-pick"></div>
+      <button class="btn secondary lighthouse-cancel" type="button">Cancel</button>
+    </div>
+  `;
+  const panel = modal.querySelector(".lighthouse-discard-panel") as HTMLElement;
+  const pick = modal.querySelector(".lighthouse-hand-pick") as HTMLElement;
+
+  for (const card of priv.hand) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "lighthouse-pick-card";
+    btn.innerHTML = `<img src="${cardImg(card.cardId)}" alt="${cardName(card.cardId)}" />`;
+    btn.onclick = () => {
+      send({ type: "USE_LIGHTHOUSE", discardInstanceId: card.instanceId });
+      modal.remove();
+    };
+    pick.appendChild(btn);
+  }
+
+  modal.querySelector(".lighthouse-cancel")?.addEventListener("click", () => modal.remove());
+  modal.querySelector(".card-modal-backdrop")?.addEventListener("click", () => modal.remove());
+
+  document.body.appendChild(modal);
+  modal.hidden = false;
+  void panel.offsetWidth;
+  panel.classList.add("is-opening");
+}
+
+let prevImpIds = new Set<string>();
+
+export function markNewImpAttachments(root: HTMLElement, imps: { instanceId: string }[]): void {
+  const current = new Set(imps.map((i) => i.instanceId));
+  root.querySelectorAll(".imp-attachment").forEach((el) => {
+    const id = (el as HTMLElement).dataset.impId;
+    if (id && !prevImpIds.has(id)) {
+      el.classList.add("imp-attachment--enter");
+    }
+  });
+  prevImpIds = current;
+}
+
+export function bindBoardAttachments(
+  root: HTMLElement,
+  pub: PublicGameState,
+  priv: PrivateGameState | undefined,
+  humanPlayerId: string,
+  send: (a: GameAction) => void
+): void {
+  root.querySelectorAll(".lighthouse-attachment.is-active").forEach((el) => {
+    const btn = el as HTMLButtonElement;
+    const clone = btn.cloneNode(true) as HTMLButtonElement;
+    btn.replaceWith(clone);
+    clone.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (priv && clone.dataset.playerId === humanPlayerId) {
+        openLighthouseDiscardModal(priv, send);
+      }
+    });
+  });
+  markNewImpAttachments(root, pub.imps);
+}
+
 export function getTeamHand(priv: PrivateGameState, playerId: string): CardInstance[] {
   return priv.teamHands.find((t) => t.playerId === playerId)?.hand ?? priv.hand;
 }
@@ -408,7 +578,8 @@ export function getTeamHand(priv: PrivateGameState, playerId: string): CardInsta
 export function renderBoard(
   root: HTMLElement,
   pub: PublicGameState,
-  selectedPlayerId?: string
+  selectedPlayerId?: string,
+  humanPlayerId?: string
 ): void {
   const possessedImg = cardImg(pub.possessedId);
   const possessedName = cardName(pub.possessedId);
@@ -418,12 +589,8 @@ export function renderBoard(
       : "";
   const demonImg = pub.demonRevealed && pub.demon ? cardImg(pub.demon.cardId) : cardImg("dc_cover");
   const dncImg = pub.currentDncId ? cardImg(pub.currentDncId) : "";
-
-  const impStats = pub.imps.length
-    ? pub.imps
-        .map((i: { cardId: string; hp: number }) => `<span class="stat">Imp ${cardName(i.cardId)}: ${i.hp}</span>`)
-        .join("")
-    : "";
+  const trumpetHtml = renderTrumpetAttachment(pub.players);
+  const impHtml = renderImpAttachments(pub.imps);
 
   const dayLabel =
     pub.phase === "day"
@@ -433,6 +600,9 @@ export function renderBoard(
     pub.phase === "night"
       ? formatPhaseActionLabel("night", pub.nightActionsRemaining, pub.currentDncNightTotal)
       : "";
+
+  const rosterCtx =
+    humanPlayerId != null ? { pub, humanPlayerId } : undefined;
 
   root.innerHTML = `
     <div class="board-chrome board-chrome-top glass-panel">
@@ -448,7 +618,6 @@ export function renderBoard(
         <span class="stat" id="deck-anchor">Action ${pub.actionDeckCount}</span>
         <span class="stat">Event ${pub.eventDeckCount}</span>
         ${pub.demon && pub.demonRevealed ? `<span class="stat">Demon ${pub.demon.hp}/${pub.demon.maxHp}</span>` : ""}
-        ${impStats}
       </div>
     </div>
     <div class="board-stage">
@@ -468,10 +637,12 @@ export function renderBoard(
               <img src="${possessedImg}" alt="Possessed" />
               <div class="possessed-hp">HP ${pub.possessedHp}/${pub.possessedBaseHp}${hpNote}</div>
               <div class="label">${possessedName}</div>
+              <div class="possessed-attachments">${trumpetHtml}</div>
             </div>
             <div class="card-slot demon">
               <img src="${demonImg}" alt="Demon" />
               <div class="label">${pub.demonRevealed ? "Demon" : "Contract"}</div>
+              <div class="demon-attachments">${impHtml}</div>
             </div>
           </div>
           <aside id="possessed-actions" class="possessed-actions"></aside>
@@ -479,7 +650,7 @@ export function renderBoard(
       </div>
     </div>
     <div class="board-chrome board-chrome-bottom glass-panel">
-      ${renderPlayerRoster(pub.players, selectedPlayerId)}
+      ${renderPlayerRoster(pub.players, selectedPlayerId, rosterCtx)}
     </div>
   `;
 }
@@ -512,6 +683,7 @@ export function renderCompactStatus(
 
 export interface HandRenderContext {
   phase: Phase;
+  pub: PublicGameState;
   priv: PrivateGameState;
   humanPlayerId: string;
   viewingPlayerId: string;
@@ -532,6 +704,7 @@ export function bindHandClickHandlers(
     const clone = htmlEl.cloneNode(true) as HTMLElement;
     htmlEl.replaceWith(clone);
     clone.addEventListener("click", () => {
+      if (isInputLocked()) return;
       const id = clone.dataset.id!;
       const card = hand.find((c) => c.instanceId === id);
       if (card) ctx.onCardClick(card);
@@ -546,7 +719,7 @@ export function renderHand(
 ): void {
   root.innerHTML = hand
     .map((c) => {
-      const cls = ctx ? getHandCardVisualClass(ctx.phase, c.cardId) : "";
+      const cls = ctx ? getHandCardVisualClass(ctx.phase, c.cardId, ctx.pub) : "";
       return `<div class="hand-card ${cls}" data-id="${c.instanceId}"><img src="${cardImg(c.cardId)}" alt="${cardName(c.cardId)}" /></div>`;
     })
     .join("");
@@ -579,7 +752,12 @@ function createCircleButton(
   btn.textContent = label;
   btn.title = title;
   btn.disabled = disabled;
-  if (!disabled) btn.onclick = action;
+  if (!disabled) {
+    btn.onclick = () => {
+      if (isInputLocked()) return;
+      action();
+    };
+  }
   return btn;
 }
 
@@ -620,19 +798,15 @@ export function renderPossessedPanelActions(
   }
 
   if (pub.phase === "day" && legal.some((a) => a.type === "ADVANCE_PHASE")) {
-    const fullLabel =
-      pub.dayActionsRemaining > 0
-        ? `End Day Phase (${pub.dayActionsRemaining} left)`
-        : "End Day Phase";
+    const hasInstants = legal.some((a) => a.type === "PLAY_CARD");
+    const fullLabel = formatEndPhaseButtonLabel("day", pub.dayActionsRemaining, hasInstants);
     stack.appendChild(
       createCircleButton("End\nPhase", fullLabel, () => send({ type: "ADVANCE_PHASE" }), "btn")
     );
   }
   if (pub.phase === "night" && legal.some((a) => a.type === "ADVANCE_PHASE")) {
-    const fullLabel =
-      pub.nightActionsRemaining > 0
-        ? `End Night Phase (${pub.nightActionsRemaining} left)`
-        : "End Night Phase";
+    const hasInstants = legal.some((a) => a.type === "PLAY_CARD");
+    const fullLabel = formatEndPhaseButtonLabel("night", pub.nightActionsRemaining, hasInstants);
     stack.appendChild(
       createCircleButton("End\nPhase", fullLabel, () => send({ type: "ADVANCE_PHASE" }), "btn")
     );
@@ -651,11 +825,19 @@ export function renderDiscussionButton(
   if (!priv || pub.phase === "game_over") return;
   if ((pub.phase !== "day" && pub.phase !== "night") || !isGameIntroDismissed()) return;
 
+  const count = priv.discussionSuggestions.length;
+  const label = count > 0 ? `Discuss (${count})` : "Discuss";
+  const title =
+    count > 0
+      ? `Team discussion — ${count} teammate suggestion${count === 1 ? "" : "s"}`
+      : "No teammate plays to discuss right now";
+
   const btn = createCircleButton(
-    "Discuss",
-    "Discussion — suggest a card to play",
+    label,
+    title,
     () => openDiscussionModal(pub, priv, send),
-    "btn"
+    "btn",
+    count === 0
   );
   container.appendChild(btn);
 }
@@ -740,21 +922,17 @@ export function renderPhaseActions(
 
   const legal = priv.legalActions ?? [];
 
-  if (pub.presentationHold) return;
+  if (pub.presentationHold || pub.pendingRerollPrompt) return;
 
   if (circular) {
     if (pub.phase === "day" && legal.some((a) => a.type === "ADVANCE_PHASE")) {
-      const fullLabel =
-        pub.dayActionsRemaining > 0
-          ? `End Day Phase (${pub.dayActionsRemaining} left)`
-          : "End Day Phase";
+      const hasInstants = legal.some((a) => a.type === "PLAY_CARD");
+      const fullLabel = formatEndPhaseButtonLabel("day", pub.dayActionsRemaining, hasInstants);
       addBtn("End\nPhase", { type: "ADVANCE_PHASE" }, "btn", fullLabel);
     }
     if (pub.phase === "night" && legal.some((a) => a.type === "ADVANCE_PHASE")) {
-      const fullLabel =
-        pub.nightActionsRemaining > 0
-          ? `End Night Phase (${pub.nightActionsRemaining} left)`
-          : "End Night Phase";
+      const hasInstants = legal.some((a) => a.type === "PLAY_CARD");
+      const fullLabel = formatEndPhaseButtonLabel("night", pub.nightActionsRemaining, hasInstants);
       addBtn("End\nPhase", { type: "ADVANCE_PHASE" }, "btn", fullLabel);
     }
   }
@@ -788,8 +966,9 @@ export function renderPhaseActions(
     }
   }
   if (pub.pendingChoice?.targets && !isCardModalBlockingPendingActions()) {
-    for (const t of pub.pendingChoice.targets) {
-      addBtn(`Target demon`, { type: "SELECT_TARGET", targetId: t });
+    const targets = pub.pendingChoice.targets;
+    if (targets.length === 1) {
+      addBtn(`Target demon`, { type: "SELECT_TARGET", targetId: targets[0] });
     }
   }
 }

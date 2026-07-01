@@ -89,7 +89,7 @@ export async function runGameIntroIfNeeded(
           new Set(),
           ctx.hand,
           ctx.onRenderHand,
-          (card) => getHandCardVisualClass(pub.phase, card.cardId),
+          (card) => getHandCardVisualClass(pub.phase, card.cardId, pub),
           ctx.handCtx
         );
       }

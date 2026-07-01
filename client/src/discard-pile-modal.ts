@@ -1,4 +1,4 @@
-import type { PublicGameState } from "../../shared/types.js";
+import type { CardInstance, PublicGameState } from "../../shared/types.js";
 import { cardImg, cardName } from "./ws-client.js";
 import { closeAnimatedModal, forceCloseModal, openAnimatedModal } from "./modal-animations.js";
 
@@ -36,9 +36,18 @@ function ensureDiscardModal(): { root: HTMLElement; panel: HTMLElement } {
   return { root: modalEl, panel: panelEl };
 }
 
+function getActionDiscard(pub: PublicGameState): CardInstance[] {
+  return pub.actionDiscard ?? [];
+}
+
+function getActionDiscardCount(pub: PublicGameState): number {
+  const discard = getActionDiscard(pub);
+  return discard.length > 0 ? discard.length : (pub.actionDiscardCount ?? 0);
+}
+
 export function openDiscardPileModal(pub: PublicGameState): void {
   const { root, panel } = ensureDiscardModal();
-  const cards = [...pub.actionDiscard].reverse();
+  const cards = [...getActionDiscard(pub)].reverse();
   const grid = panel.querySelector(".discard-pile-grid")!;
   const subtitle = panel.querySelector(".discard-pile-subtitle")!;
 
@@ -71,29 +80,35 @@ export function closeDiscardPileModal(): void {
 
 export function renderDiscardPileSlot(el: HTMLElement, pub: PublicGameState): void {
   el.innerHTML = "";
-  const count = pub.actionDiscard.length;
+  const discard = getActionDiscard(pub);
+  const count = getActionDiscardCount(pub);
+  const top = discard[discard.length - 1];
 
-  if (count === 0) {
-    const empty = document.createElement("div");
-    empty.className = "hand-discard-empty";
-    empty.innerHTML = `<span class="hand-discard-empty-icon" aria-hidden="true"></span><span class="hand-discard-empty-label">Discard</span>`;
-    empty.title = "Action discard pile (empty)";
-    el.appendChild(empty);
-    return;
-  }
-
-  const top = pub.actionDiscard[pub.actionDiscard.length - 1]!;
   const btn = document.createElement("button");
   btn.type = "button";
-  btn.className = "hand-discard-pile";
-  btn.title = `Browse action discard (${count})`;
-  btn.innerHTML = `
+  btn.className = discard.length > 0 ? "hand-discard-pile" : "hand-discard-pile hand-discard-pile-empty";
+  btn.title =
+    count === 0
+      ? "Browse action discard (empty)"
+      : `Browse action discard (${count})`;
+
+  if (discard.length > 0 && top) {
+    btn.innerHTML = `
     <span class="hand-discard-stack">
       <span class="discard-card-back" aria-hidden="true"></span>
       <img class="discard-top-card" src="${cardImg(top.cardId)}" alt="" />
     </span>
     <span class="hand-discard-count">${count}</span>
   `;
+  } else {
+    btn.innerHTML = `
+    <span class="hand-discard-stack hand-discard-stack-empty" aria-hidden="true">
+      <span class="discard-card-back"></span>
+    </span>
+    <span class="hand-discard-empty-label">Discard</span>
+  `;
+  }
+
   btn.addEventListener("click", () => openDiscardPileModal(pub));
   el.appendChild(btn);
 }

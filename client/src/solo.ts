@@ -46,7 +46,7 @@ import { refreshTriggerRollModal, resetTriggerRollModal } from "./trigger-roll-m
 import { handlePresentationUpdate, resetPresentationLock } from "./phase-orchestrator.js";
 import { refreshPhaseToast, resetPhaseToast } from "./phase-toast.js";
 
-const SOLO_BUILD = "2025-06-30-fix2";
+const SOLO_BUILD = "2025-07-01-draw-ui";
 console.info(`[bdc-solo] loaded ${SOLO_BUILD}`);
 
 const client = new GameClient();
@@ -127,7 +127,10 @@ function renderFooterChrome(
   send: (a: Parameters<typeof client.sendAction>[0]) => void,
   humanPlayerId: string
 ): void {
-  renderDiscardPileSlot(document.getElementById("hand-discard")!, pub);
+  const discardSlot = document.getElementById("hand-discard");
+  if (discardSlot) {
+    renderDiscardPileSlot(discardSlot, pub);
+  }
   renderDiscussionButton(document.getElementById("hand-discussion")!, pub, priv, send);
   const possessedActions = document.getElementById("possessed-actions");
   if (possessedActions) {
@@ -160,6 +163,10 @@ function renderSelectedHand(
   };
 
   renderHandLabel(handLabelEl, viewingPlayer?.name ?? "Player", viewingId === humanPlayerId);
+
+  if (pub.presentationHold?.at === "post_draw") {
+    return { handCtx };
+  }
 
   const prevIds = getPrevHandIdsForPlayer(viewingId);
 
@@ -315,7 +322,7 @@ function renderGameUI(): void {
 
     renderBoardWithRoster(pub, humanPlayerId, priv, send);
     renderFooterChrome(pub, priv, send, humanPlayerId);
-    renderPhaseActions(actionsEl, pub, priv, send, { humanPlayerId, circular: true });
+    renderPhaseActions(actionsEl, pub, priv, send, { humanPlayerId });
 
     const { handCtx } = renderSelectedHand(pub, priv, humanPlayerId, send);
 

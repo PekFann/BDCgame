@@ -111,12 +111,13 @@ export async function handlePresentationUpdate(
       while (isDrawAnimating()) {
         await sleep(50);
       }
+      const prevIdsForAnim = new Set(ctx.prevHandIds);
       if (ctx.handRoot && ctx.onRenderHand && ctx.handCtx) {
-        const hasNewCards = ctx.hand.some((c) => !ctx.prevHandIds.has(c.instanceId));
+        const hasNewCards = ctx.hand.some((c) => !prevIdsForAnim.has(c.instanceId));
         if (hasNewCards) {
           await runDrawAnimations(
             ctx.handRoot,
-            ctx.prevHandIds,
+            prevIdsForAnim,
             ctx.hand,
             ctx.onRenderHand,
             (card) => getHandCardVisualClass(pub.phase, card.cardId),

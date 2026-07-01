@@ -103,7 +103,7 @@ export function renderDiscardPileSlot(el: HTMLElement, pub: PublicGameState): vo
   } else {
     btn.innerHTML = `
     <span class="hand-discard-stack hand-discard-stack-empty" aria-hidden="true">
-      <span class="discard-card-back"></span>
+      <span class="hand-discard-empty-icon"></span>
     </span>
     <span class="hand-discard-empty-label">Discard</span>
   `;

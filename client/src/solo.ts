@@ -25,7 +25,7 @@ import {
   syncPrevHandIdsForPlayer,
 } from "./card-animations.js";
 import { ensureCardModal, openCardModal, refreshCardModalIfOpen } from "./card-modal.js";
-import { openDrawPhaseModalIfNeeded, refreshDrawPhaseModal } from "./draw-phase-modal.js";
+import { closeDrawPhaseModalIfOpen, openDrawPhaseModalIfNeeded, refreshDrawPhaseModal } from "./draw-phase-modal.js";
 import { renderDiscardPileSlot } from "./discard-pile-modal.js";
 import {
   isGameIntroRunning,
@@ -46,7 +46,7 @@ import { refreshTriggerRollModal, resetTriggerRollModal } from "./trigger-roll-m
 import { handlePresentationUpdate, resetPresentationLock } from "./phase-orchestrator.js";
 import { refreshPhaseToast, resetPhaseToast } from "./phase-toast.js";
 
-const SOLO_BUILD = "2025-07-01-draw-ui";
+const SOLO_BUILD = "2025-07-01-dice-discard-cycle2";
 console.info(`[bdc-solo] loaded ${SOLO_BUILD}`);
 
 const client = new GameClient();
@@ -54,6 +54,8 @@ let roomId = "";
 let gameStartedResolve: (() => void) | null = null;
 let gameStartedReject: ((err: Error) => void) | null = null;
 let selectedPlayerId = "";
+let lastRenderedCycle = 0;
+let drawIdleRetryScheduled = false;
 
 function showSetupError(message: string): void {
   const el = document.getElementById("setupError")!;
@@ -101,6 +103,31 @@ function resolveViewingPlayerId(pub: PublicGameState, humanPlayerId: string): st
   if (!selectedPlayerId) return humanPlayerId;
   if (pub.players.some((p) => p.id === selectedPlayerId)) return selectedPlayerId;
   return humanPlayerId;
+}
+
+function scheduleHandRerenderWhenDrawIdle(
+  humanPlayerId: string,
+  send: (a: Parameters<typeof client.sendAction>[0]) => void
+): void {
+  if (drawIdleRetryScheduled) return;
+  drawIdleRetryScheduled = true;
+  void (async () => {
+    while (isDrawAnimating()) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
+    drawIdleRetryScheduled = false;
+    const pub = client.publicState;
+    const priv = client.privateState ?? undefined;
+    if (pub?.started && priv) {
+      renderSelectedHand(pub, priv, humanPlayerId, send);
+    }
+  })();
+}
+
+function closeStalePhaseModals(pub: PublicGameState): void {
+  if (pub.phase !== "draw") {
+    closeDrawPhaseModalIfOpen();
+  }
 }
 
 function renderBoardWithRoster(
@@ -171,6 +198,7 @@ function renderSelectedHand(
   const prevIds = getPrevHandIdsForPlayer(viewingId);
 
   if (isDrawAnimating()) {
+    scheduleHandRerenderWhenDrawIdle(humanPlayerId, send);
     return { handCtx };
   }
 
@@ -307,6 +335,16 @@ function renderGameUI(): void {
       return;
     }
 
+    if (pub.cycle !== lastRenderedCycle) {
+      if (lastRenderedCycle > 0) {
+        selectedPlayerId = "";
+        resetPresentationLock();
+      }
+      lastRenderedCycle = pub.cycle;
+    }
+
+    closeStalePhaseModals(pub);
+
     if (shouldDeferGameRender(pub)) {
       if (shouldKickOffIntro(pub) && priv.hand.length > 0) {
         kickOffIntroIfNeeded(pub, priv, humanPlayerId, handEl, send, modalCtx);
@@ -341,7 +379,7 @@ function renderGameUI(): void {
         syncPrevHandIdsForPlayer(humanPlayerId, ids);
         const latestPub = client.publicState;
         const latestPriv = client.privateState ?? undefined;
-        if (!latestPub || !latestPriv || latestPub.presentationHold) return;
+        if (!latestPub || !latestPriv) return;
         renderSelectedHand(latestPub, latestPriv, humanPlayerId, send);
         refreshGameplayModals(latestPub, latestPriv, send, humanPlayerId, {
           pub: latestPub,
@@ -365,6 +403,9 @@ async function init() {
   resetDrawAnimationState();
   resetTriggerRollModal();
   resetPhaseToast();
+  lastRenderedCycle = 0;
+  drawIdleRetryScheduled = false;
+  selectedPlayerId = "";
 
   const possessedSelect = document.getElementById("possessed") as HTMLSelectElement;
   const startBtn = document.getElementById("startBtn") as HTMLButtonElement;

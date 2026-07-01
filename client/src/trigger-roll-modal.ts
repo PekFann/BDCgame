@@ -75,17 +75,12 @@ export function isTriggerRollModalOpen(): boolean {
 
 
 export function isTriggerRollAwaitingResult(pub: PublicGameState): boolean {
-
+  if (pub.phase !== "triggers") return false;
   return (
-
     rollSent ||
-
     presentationRunning ||
-
     pub.presentationHold?.at === "post_trigger_roll"
-
   );
-
 }
 
 
@@ -216,7 +211,13 @@ export function refreshTriggerRollModal(
 
   const { root, panel } = ensureTriggerRollModal();
 
-
+  if (pub.phase !== "triggers") {
+    resetTriggerRollClientFlags();
+    if (!root.hidden && !presentationRunning) {
+      closeAnimatedModal(root, panel, () => {});
+    }
+    return;
+  }
 
   if (pub.presentationHold?.at === "post_trigger_roll") {
     if (root.hidden) openAnimatedModal(root, panel);
@@ -260,18 +261,17 @@ export function isTriggerRollPresentationRunning(): boolean {
   return presentationRunning;
 }
 
-export function resetTriggerRollModal(): void {
-
+export function resetTriggerRollClientFlags(): void {
   rollSent = false;
-
   presentationRunning = false;
+}
+
+export function resetTriggerRollModal(): void {
+  resetTriggerRollClientFlags();
 
   if (modalEl && panelEl && !modalEl.hidden) {
-
     forceCloseModal(modalEl, panelEl);
-
   }
-
 }
 
 

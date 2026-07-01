@@ -2,7 +2,7 @@ import type { CardInstance, GameAction, PrivateGameState, PublicGameState } from
 import { getHandInstanceIds, isDrawAnimating, runDrawAnimations } from "./card-animations.js";
 import { runDicePresentation } from "./dice-animation.js";
 import { runManifestAnimation } from "./manifest-animation.js";
-import { runTriggerRollPresentationIfNeeded, isTriggerRollPresentationRunning } from "./trigger-roll-modal.js";
+import { runTriggerRollPresentationIfNeeded, isTriggerRollPresentationRunning, resetTriggerRollClientFlags } from "./trigger-roll-modal.js";
 import { getHandCardVisualClass, type HandRenderContext } from "./ws-client.js";
 type SendFn = (action: GameAction) => void;
 
@@ -21,9 +21,10 @@ export function resetPresentationLock(): void {
 function holdKey(pub: PublicGameState): string {
   const h = pub.presentationHold;
   if (!h) return "";
-  if (h.at === "manifest") return `manifest-${pub.cycle}`;
-  if (h.at === "post_trigger_roll") return `trigger-${pub.cycle}-${h.roll}-${h.outcome}`;
-  if (h.at === "post_draw") return `post_draw-${pub.cycle}`;
+  const phaseTag = `${pub.cycle}-${pub.dncPhaseIndex}`;
+  if (h.at === "manifest") return `manifest-${phaseTag}`;
+  if (h.at === "post_trigger_roll") return `trigger-${phaseTag}-${h.roll}-${h.outcome}`;
+  if (h.at === "post_draw") return `post_draw-${phaseTag}`;
   return "";
 }
 
@@ -63,6 +64,9 @@ export async function handlePresentationUpdate(
   if (isPresenting) return ctx.prevHandIds;
 
   if (key === lastHoldKey) {
+    if (hold.at === "post_trigger_roll" && ctx.mode !== "tv") {
+      resetTriggerRollClientFlags();
+    }
     await ackPresentationIfHuman(ctx);
     return ctx.prevHandIds;
   }

@@ -946,11 +946,11 @@ a:hover {
   justify-content: center;
   font-size: 2rem;
   font-weight: 700;
-  color: var(--gold);
-  background: var(--surface);
-  border: 2px solid var(--gold);
+  color: #fff;
+  background: linear-gradient(145deg, #d32f2f, #b71c1c);
+  border: 2px solid #8b0000;
   border-radius: 12px;
-  box-shadow: var(--shadow-deep), 0 0 20px rgba(201, 162, 77, 0.15);
+  box-shadow: var(--shadow-deep), 0 0 20px rgba(211, 47, 47, 0.25);
 }
 
 .dice-cube.dice-rolling {
@@ -1007,10 +1007,10 @@ a:hover {
 .dice-face {
   position: absolute;
   inset: 0;
-  background: linear-gradient(145deg, #f4ead8 0%, #e8dcc4 100%);
-  border: 2px solid #c9a24d;
+  background: linear-gradient(145deg, #e53935 0%, #b71c1c 100%);
+  border: 2px solid #8b0000;
   border-radius: 14px;
-  box-shadow: inset 0 2px 8px rgba(255, 255, 255, 0.35), inset 0 -3px 8px rgba(0, 0, 0, 0.12);
+  box-shadow: inset 0 2px 8px rgba(255, 255, 255, 0.2), inset 0 -3px 8px rgba(0, 0, 0, 0.25);
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
@@ -1022,8 +1022,8 @@ a:hover {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #2a2030;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+  background: #fff;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.15);
   align-self: center;
   justify-self: center;
   opacity: 0;
@@ -1235,6 +1235,46 @@ a:hover {
 
 .hand-discard-pile:not(:disabled):hover .hand-discard-stack {
   transform: translateY(-2px);
+}
+
+.hand-discard-pile-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  border: 1px dashed rgba(201, 162, 77, 0.45);
+  background: rgba(0, 0, 0, 0.2);
+  padding: 0.2rem;
+}
+
+.hand-discard-pile-empty:not(:disabled):hover {
+  border-color: rgba(201, 162, 77, 0.65);
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.hand-discard-pile-empty .hand-discard-stack-empty {
+  width: 1.5rem;
+  height: 2rem;
+  flex-shrink: 0;
+}
+
+.hand-discard-pile-empty .hand-discard-empty-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+  border: 1px solid rgba(201, 162, 77, 0.35);
+  background: linear-gradient(145deg, rgba(32, 24, 40, 0.95), rgba(18, 12, 24, 0.95));
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  transform: rotate(-6deg);
+}
+
+.hand-discard-pile-empty .hand-discard-empty-label {
+  font-size: 0.58rem;
+  letter-spacing: 0.02em;
+  color: rgba(201, 162, 77, 0.75);
+  line-height: 1.2;
 }
 
 .hand-discard-stack {

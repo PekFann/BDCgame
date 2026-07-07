@@ -9,21 +9,21 @@ const cardDefs = Object.fromEntries(
 );
 
 const FACE_ROTATIONS: Record<number, string> = {
-  1: "rotateX(0deg) rotateY(0deg)",
-  2: "rotateX(-90deg) rotateY(0deg)",
-  3: "rotateY(-90deg) rotateX(0deg)",
-  4: "rotateY(90deg) rotateX(0deg)",
-  5: "rotateX(90deg) rotateY(0deg)",
-  6: "rotateX(180deg) rotateY(0deg)",
+  1: "rotateX(0deg) rotateY(0deg) rotateZ(0deg)",
+  2: "rotateX(-90deg) rotateY(0deg) rotateZ(0deg)",
+  3: "rotateY(-90deg) rotateX(0deg) rotateZ(0deg)",
+  4: "rotateY(90deg) rotateX(0deg) rotateZ(0deg)",
+  5: "rotateX(90deg) rotateY(0deg) rotateZ(0deg)",
+  6: "rotateX(180deg) rotateY(0deg) rotateZ(0deg)",
 };
 
 /** Tumble spin duration — decelerates into settle. */
-const TUMBLE_DURATION_MS = 1650;
+const TUMBLE_DURATION_MS = 2600;
 /** CSS settle transition length; keep in sync with `.dice-cube-3d.is-landed`. */
-const SETTLE_DURATION_MS = 920;
+const SETTLE_DURATION_MS = 1200;
 /** Pause on landed face before the roll number is revealed. */
-export const POST_LAND_HOLD_MS = 500;
-const TUMBLE_STEPS = 16;
+export const POST_LAND_HOLD_MS = 700;
+const TUMBLE_STEPS = 12;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -95,6 +95,8 @@ export async function animatePhysicalDice(container: HTMLElement, finalRoll: num
 
   const tumblePath = buildTumblePath();
 
+  let endRx = 0;
+  let endRy = 0;
   await new Promise<void>((resolve) => {
     const start = performance.now();
     const tick = (now: number) => {
@@ -106,10 +108,10 @@ export async function animatePhysicalDice(container: HTMLElement, finalRoll: num
       const frac = pathIndex - i0;
       const a0 = tumblePath[i0];
       const a1 = tumblePath[i1];
-      const rx = lerpAngle(a0.rx, a1.rx, frac);
-      const ry = lerpAngle(a0.ry, a1.ry, frac);
+      endRx = lerpAngle(a0.rx, a1.rx, frac);
+      endRy = lerpAngle(a0.ry, a1.ry, frac);
       const rz = lerpAngle(a0.rz, a1.rz, frac);
-      cube!.style.transform = `rotateX(${rx}deg) rotateY(${ry}deg) rotateZ(${rz}deg)`;
+      cube!.style.transform = `rotateX(${endRx}deg) rotateY(${endRy}deg) rotateZ(${rz}deg)`;
       if (t < 1) {
         requestAnimationFrame(tick);
       } else {
@@ -120,6 +122,10 @@ export async function animatePhysicalDice(container: HTMLElement, finalRoll: num
   });
 
   cube.classList.remove("is-tumbling");
+  cube.style.transition = "none";
+  cube.style.transform = `rotateX(${endRx}deg) rotateY(${endRy}deg) rotateZ(0deg)`;
+  void cube.offsetWidth;
+
   cube.classList.add("is-landed");
   scene?.classList.add("is-landed-pause");
   cube.style.transition = "";
@@ -139,7 +145,11 @@ function revealRollNumber(panel: HTMLElement, roll: number): void {
   `;
 }
 
-export async function runTriggerDiceAnimation(panel: HTMLElement, roll: number): Promise<void> {
+export async function runTriggerDiceAnimation(
+  panel: HTMLElement,
+  roll: number,
+  options?: { revealNumber?: boolean }
+): Promise<void> {
   panel.innerHTML = `
     <h3 class="card-modal-title">Rolling…</h3>
     <div class="trigger-roll-dice-host"></div>
@@ -147,7 +157,9 @@ export async function runTriggerDiceAnimation(panel: HTMLElement, roll: number):
   const host = panel.querySelector(".trigger-roll-dice-host") as HTMLElement;
   mountDiceScene(host, true);
   await animatePhysicalDice(host, roll);
-  revealRollNumber(panel, roll);
+  if (options?.revealNumber !== false) {
+    revealRollNumber(panel, roll);
+  }
 }
 
 export function showRollResultWaiting(panel: HTMLElement, roll: number): void {
@@ -210,16 +222,14 @@ export async function runTriggerRollModalPresentation(
   options?: { skipDice?: boolean; send?: (a: GameAction) => void }
 ): Promise<void> {
   if (!options?.skipDice) {
-    panel.innerHTML = `
-      <h3 class="card-modal-title">Rolling…</h3>
-      <div class="trigger-roll-dice-host"></div>
-    `;
-    const host = panel.querySelector(".trigger-roll-dice-host") as HTMLElement;
-    mountDiceScene(host, true);
-    await animatePhysicalDice(host, hold.roll);
+    await runTriggerDiceAnimation(panel, hold.roll, { revealNumber: false });
   }
 
-  revealRollNumber(panel, hold.roll);
+  if (!panel.querySelector(".dice-roll-result")) {
+    revealRollNumber(panel, hold.roll);
+  } else {
+    panel.querySelector(".trigger-roll-resolving")?.remove();
+  }
   const outcomeHost = document.createElement("div");
   outcomeHost.className = "trigger-roll-outcome-host";
   outcomeHost.innerHTML = outcomeMarkup(pub, hold);

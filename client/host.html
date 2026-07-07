@@ -10,17 +10,15 @@
     <link rel="stylesheet" href="/src/styles/main.css" />
     <script type="module" src="/src/ambient-bg.ts"></script>
   </head>
-  <body>
-    <div class="landing">
+  <body class="host-lobby-view">
+    <div class="host-page landing">
       <h1>Host TV Session</h1>
       <p id="status">Creating room…</p>
-      <div id="qr" class="qr-grid"></div>
+      <div id="qr" class="qr-grid qr-grid--centered"></div>
       <div class="setup-form">
-        <label>Players <select id="playerCount"><option value="2">2</option><option value="3">3</option><option value="4" selected>4</option></select></label>
-        <label>Possessed <select id="possessed"></select></label>
         <button class="btn" id="openTv">Open TV View</button>
-        <button class="btn secondary" id="startBtn">Start Game</button>
       </div>
+      <p class="host-phone-hint">Scan a QR code with your phone to join. Player 1 picks Possessed and starts the game from their phone.</p>
       <p><a href="/">Back</a></p>
     </div>
     <script type="module" src="/src/host.ts"></script>

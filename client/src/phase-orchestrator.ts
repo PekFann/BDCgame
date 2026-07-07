@@ -2,7 +2,11 @@ import type { CardInstance, GameAction, PrivateGameState, PublicGameState } from
 import { getHandInstanceIds, isDrawAnimating, runDrawAnimations } from "./card-animations.js";
 import { runDicePresentation } from "./dice-animation.js";
 import { runManifestAnimation } from "./manifest-animation.js";
-import { runTriggerRollPresentationIfNeeded, isTriggerRollPresentationRunning, resetTriggerRollClientFlags } from "./trigger-roll-modal.js";
+import {
+  isTriggerRollOutcomePresented,
+  isTriggerRollPresentationRunning,
+  runTriggerRollPresentationIfNeeded,
+} from "./trigger-roll-modal.js";
 import { getHandCardVisualClass, type HandRenderContext } from "./ws-client.js";
 type SendFn = (action: GameAction) => void;
 
@@ -65,10 +69,13 @@ export async function handlePresentationUpdate(
 
   if (key === lastHoldKey) {
     if (hold.at === "post_trigger_roll" && ctx.mode !== "tv") {
+      if (isTriggerRollOutcomePresented(pub)) {
+        return ctx.prevHandIds;
+      }
+    } else {
+      await ackPresentationIfHuman(ctx);
       return ctx.prevHandIds;
     }
-    await ackPresentationIfHuman(ctx);
-    return ctx.prevHandIds;
   }
 
   isPresenting = true;
@@ -92,13 +99,14 @@ export async function handlePresentationUpdate(
           if (ctx.boardRoot) {
             await runDicePresentation(ctx.boardRoot, pub, hold);
           }
+          lastHoldKey = key;
         } else {
-          if (!isTriggerRollPresentationRunning()) {
-            await runTriggerRollPresentationIfNeeded(pub, ctx.send);
-          } else {
-            while (isTriggerRollPresentationRunning()) {
-              await sleep(50);
-            }
+          while (isTriggerRollPresentationRunning()) {
+            await sleep(50);
+          }
+          const presented = await runTriggerRollPresentationIfNeeded(pub, ctx.send);
+          if (presented || isTriggerRollOutcomePresented(pub)) {
+            lastHoldKey = key;
           }
         }
       } catch (err) {
@@ -106,7 +114,6 @@ export async function handlePresentationUpdate(
           console.warn("Dice presentation failed:", err);
         }
       }
-      lastHoldKey = key;
       return ctx.prevHandIds;
     }
 

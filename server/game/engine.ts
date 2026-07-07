@@ -19,6 +19,7 @@ import type {
 import {
   resolveDiscardEffect,
   resolveEnergyDistribution,
+  resolvePickActionDiscard,
   resolvePickOne,
   resolveTarget,
   startPlayCard,
@@ -94,7 +95,9 @@ export function createEmptyGame(mode: "solo" | "multi"): GameState {
     introAcknowledged: false,
     pendingRerollPrompt: null,
     pendingCardRollResume: null,
+    pendingPostTriggerAdvance: false,
     pendingRerollTimeTravelId: null,
+    lobbyPossessedId: null,
   };
 }
 
@@ -148,7 +151,8 @@ export function startGame(state: GameState, possessedId: string): void {
   const dncIds = shuffle([...Object.keys(DNC)]);
   state.dncDeck = dncIds;
 
-  const startingHand = state.playerCount === 2 ? 5 : state.playerCount === 3 ? 4 : 3;
+  const startingHand =
+    state.playerCount <= 2 ? 5 : state.playerCount === 3 ? 4 : 3;
   for (const player of state.players) {
     drawForPlayer(state, player, startingHand);
   }
@@ -181,10 +185,30 @@ function beginCycle(state: GameState): void {
   enterDncPhase(state, 0);
 }
 
+function resolveAiRerollQueue(state: GameState): void {
+  let safety = 12;
+  while (safety-- > 0 && hasPendingReroll(state) && !state.pendingChoice) {
+    const awaitingId = state.pendingRerollPrompt?.awaitingPlayerId;
+    if (!awaitingId) break;
+    const awaiting = state.players.find((p) => p.id === awaitingId);
+    if (!awaiting || awaiting.isHuman) break;
+    const human = state.players.find((p) => p.isHuman);
+    if (!human) break;
+    try {
+      declineReroll(state, human.id);
+    } catch {
+      break;
+    }
+  }
+}
+
 export function processAi(state: GameState): void {
   if (state.phase === "game_over") return;
   if (state.pendingAiPlay) return;
   if (state.presentationHold) return;
+
+  resolveAiRerollQueue(state);
+
   if (hasPendingReroll(state)) return;
   runAiTurns(state, (playerId, action) => {
     try {
@@ -202,22 +226,54 @@ export function processAi(state: GameState): void {
   maybeAdvancePhase(state);
 }
 
+function prepareRosterForStart(state: GameState): void {
+  const connectedHumans = state.players
+    .filter((p) => p.isHuman && p.isConnected)
+    .sort((a, b) => a.slot - b.slot);
+  if (connectedHumans.length === 0) {
+    throw new Error("No player joined");
+  }
+  const playerCount = Math.max(1, Math.min(4, connectedHumans.length));
+  state.playerCount = playerCount;
+  state.players = connectedHumans.slice(0, playerCount).map((p, i) => ({
+    ...p,
+    slot: i,
+  }));
+}
+
 function applyActionInternal(state: GameState, playerId: string, action: GameAction): void {
   switch (action.type) {
+    case "SET_LOBBY_POSSESSED": {
+      if (state.started) throw new Error("Game already started");
+      const player = state.players.find((p) => p.id === playerId);
+      if (!player?.isHuman || player.slot !== 0) {
+        throw new Error("Only Player 1 can choose Possessed");
+      }
+      state.lobbyPossessedId = action.possessedId;
+      return;
+    }
     case "START_GAME":
-      if (state.players.length === 0) {
-        setupPlayers(state, action.playerCount, 0);
-      } else {
-        state.playerCount = action.playerCount;
-        state.players = state.players.slice(0, action.playerCount);
-        for (const p of state.players) {
-          if (!p.isHuman) {
-            p.name = `AI ${p.slot + 1}`;
-            p.isConnected = true;
+      if (state.mode === "solo") {
+        if (state.players.length === 0) {
+          setupPlayers(state, action.playerCount, 0);
+        } else {
+          state.playerCount = action.playerCount;
+          state.players = state.players.slice(0, action.playerCount);
+          for (const p of state.players) {
+            if (!p.isHuman) {
+              p.name = `AI ${p.slot + 1}`;
+              p.isConnected = true;
+            }
           }
         }
+      } else if (state.players.length === 0) {
+        setupPlayers(state, action.playerCount, 0);
+      } else {
+        prepareRosterForStart(state);
       }
-      startGame(state, action.possessedId);
+      const possessedId = action.possessedId || state.lobbyPossessedId;
+      if (!possessedId) throw new Error("Player 1 must choose Possessed");
+      startGame(state, possessedId);
       return;
     case "CHOOSE_DRAW":
       handleDrawChoice(state, playerId, action.choice);
@@ -257,6 +313,8 @@ function applyActionInternal(state: GameState, playerId: string, action: GameAct
       const kind = state.pendingChoice?.kind;
       if (kind === "donut_bandit" || kind === "haunted_pizza" || kind === "event_pick_one") {
         resolveEventPickOne(state, playerId, action.optionId, kind);
+      } else if (kind === "pick_action_discard") {
+        resolvePickActionDiscard(state, playerId, action.optionId);
       } else {
         resolvePickOne(state, playerId, action.optionId);
       }
@@ -301,7 +359,31 @@ function applyActionInternal(state: GameState, playerId: string, action: GameAct
     default:
       break;
   }
+  maybeAdvanceAfterDeferredEventRoll(state);
+  resolveAiRerollQueue(state);
   maybeAdvancePhase(state);
+}
+
+function maybeAdvanceAfterDeferredEventRoll(state: GameState): void {
+  if (!state.pendingPostTriggerAdvance) return;
+  if (hasPendingReroll(state)) return;
+  if (state.pendingChoice) return;
+  state.pendingPostTriggerAdvance = false;
+  state.lastDiceRoll = null;
+  if (finishDncCyclePhases(state)) {
+    endCycleOrContinue(state);
+  } else {
+    advanceDncPhase(state);
+  }
+}
+
+function advanceAfterTriggerRoll(state: GameState): void {
+  state.lastDiceRoll = null;
+  if (finishDncCyclePhases(state)) {
+    endCycleOrContinue(state);
+  } else {
+    advanceDncPhase(state);
+  }
 }
 
 function maybeAdvancePhase(_state: GameState): void {
@@ -448,11 +530,10 @@ function handleAckPresentation(state: GameState, playerId: string): void {
   if (hold.at === "post_trigger_roll") {
     resolveTriggerRollOutcome(state, playerId, hold);
     state.presentationHold = null;
-    state.lastDiceRoll = null;
-    if (finishDncCyclePhases(state)) {
-      endCycleOrContinue(state);
-    } else {
-      advanceDncPhase(state);
+    if (state.pendingChoice) {
+      state.pendingPostTriggerAdvance = true;
+    } else if (!state.pendingPostTriggerAdvance) {
+      advanceAfterTriggerRoll(state);
     }
     return;
   }
@@ -477,7 +558,11 @@ function resolveTriggerRollOutcome(
       }
     }
   } else if (hold.outcome === "event") {
-    drawEventCard(state, playerId);
+    const deferred = drawEventCard(state, playerId);
+    if (deferred && state.pendingCardRollResume) {
+      state.pendingPostTriggerAdvance = true;
+      beginDiceRoll(state, playerId, "event_effect", state.pendingCardRollResume);
+    }
   }
 }
 
@@ -658,6 +743,8 @@ export function toPublicState(state: GameState): PublicGameState {
     currentDncNightTotal: state.currentDncId ? (DNC[state.currentDncId]?.nightActions ?? 0) : 0,
     currentDncPhases: getDncPhases(state) as DncCyclePhase[],
     pendingRerollPrompt: state.pendingRerollPrompt,
+    lobbyPossessedId: state.lobbyPossessedId,
+    connectedHumanCount: state.players.filter((p) => p.isHuman && p.isConnected).length,
   };
 }
 

@@ -1001,16 +1001,16 @@ a:hover {
 }
 
 .dice-cube-3d.is-landed {
-  transition: transform 0.92s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 1.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .dice-cube-3d.is-holding {
-  transition: transform 0.92s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 1.2s cubic-bezier(0.22, 1, 0.36, 1);
   filter: brightness(1.06);
 }
 
 .dice-scene.is-landed-pause {
-  animation: dice-landed-breathe 0.5s ease-in-out;
+  animation: dice-landed-breathe 0.7s ease-in-out;
 }
 
 @keyframes dice-landed-breathe {
@@ -1221,6 +1221,7 @@ a:hover {
   align-items: center;
   justify-content: center;
   align-self: center;
+  overflow: visible;
 }
 
 .hand-discussion-slot {
@@ -1229,15 +1230,21 @@ a:hover {
 
 .hand-discard-slot {
   justify-self: start;
+  overflow: visible;
 }
 
 .hand-discard-pile {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
   width: 4rem;
   height: calc(var(--hand-card-h) * 0.78);
-  border: none;
-  padding: 0;
-  background: transparent;
+  border: 1px dashed rgba(201, 162, 77, 0.45);
+  padding: 0.2rem;
+  background: rgba(0, 0, 0, 0.2);
   cursor: pointer;
   border-radius: 8px;
 }
@@ -1247,24 +1254,17 @@ a:hover {
   opacity: 0.45;
 }
 
+.hand-discard-pile:not(:disabled):hover {
+  border-color: rgba(201, 162, 77, 0.65);
+  background: rgba(0, 0, 0, 0.28);
+}
+
 .hand-discard-pile:not(:disabled):hover .hand-discard-stack {
   transform: translateY(-2px);
 }
 
 .hand-discard-pile-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
   gap: 0.2rem;
-  border: 1px dashed rgba(201, 162, 77, 0.45);
-  background: rgba(0, 0, 0, 0.2);
-  padding: 0.2rem;
-}
-
-.hand-discard-pile-empty:not(:disabled):hover {
-  border-color: rgba(201, 162, 77, 0.65);
-  background: rgba(0, 0, 0, 0.28);
 }
 
 .hand-discard-pile-empty .hand-discard-stack-empty {
@@ -1291,12 +1291,26 @@ a:hover {
   line-height: 1.2;
 }
 
+.hand-discard-label {
+  font-size: 0.5rem;
+  letter-spacing: 0.02em;
+  color: rgba(201, 162, 77, 0.75);
+  line-height: 1.1;
+  flex-shrink: 0;
+}
+
 .hand-discard-stack {
   position: relative;
   width: 100%;
-  height: 100%;
-  min-height: calc(var(--hand-card-h) * 0.78);
+  flex: 1;
+  min-width: 2.5rem;
+  min-height: 2rem;
   transition: transform 0.15s ease;
+}
+
+.hand-discard-pile-empty .hand-discard-stack {
+  flex: 0 0 auto;
+  height: 2rem;
 }
 
 .hand-discard-stack .discard-card-back,
@@ -1321,10 +1335,16 @@ a:hover {
   z-index: 2;
 }
 
+.hand-discard-stack .discard-top-card--placeholder {
+  display: block;
+  background: rgba(22, 16, 28, 0.9);
+}
+
 .hand-discard-count {
   position: absolute;
   right: -0.35rem;
   bottom: -0.35rem;
+  z-index: 3;
   min-width: 1.25rem;
   height: 1.25rem;
   padding: 0 0.25rem;
@@ -1981,6 +2001,22 @@ a:hover {
   gap: 1rem;
 }
 
+.qr-grid--centered {
+  grid-template-columns: repeat(2, auto);
+  justify-content: center;
+  justify-items: center;
+  place-items: center;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.qr-item .qr-url {
+  font-size: 0.75rem;
+  word-break: break-all;
+  margin: 0;
+}
+
 .qr-item {
   text-align: center;
   background: var(--surface2);
@@ -2244,6 +2280,32 @@ a:hover {
   border-color: var(--gold);
 }
 
+.call-for-help-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  margin: 1rem 0;
+}
+
+.call-for-help-pick-card {
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+}
+
+.call-for-help-pick-card img {
+  width: 72px;
+  display: block;
+  border-radius: 6px;
+}
+
+.call-for-help-pick-card:hover {
+  border-color: var(--gold);
+}
+
 .board-attachment {
   width: calc(var(--hero-card-max-h) * 1.5 * 0.55);
   max-width: 132px;
@@ -2401,7 +2463,7 @@ button.lighthouse-attachment.is-active:hover {
   position: fixed;
   top: 0.65rem;
   right: 0.65rem;
-  z-index: 150;
+  z-index: 220;
   width: 2.25rem;
   height: 2.25rem;
   border-radius: 10px;
@@ -2430,21 +2492,76 @@ button.lighthouse-attachment.is-active:hover {
 /* Friendship gain particles */
 .friendship-particle {
   position: fixed;
-  width: 28px;
-  height: 28px;
   pointer-events: none;
-  z-index: 245;
+  z-index: 310;
+  transform: translate(-50%, -100%);
   animation: friendshipRise 1.2s ease-out forwards;
 }
 
+.friendship-particle--solo {
+  width: 32px;
+  height: 32px;
+}
+
+.friendship-particle--phone {
+  width: 24px;
+  height: 24px;
+}
+
 @keyframes friendshipRise {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -100%) scale(0.6);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, -100%) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--drift-x)), calc(-100% + var(--rise))) scale(0.85);
+  }
+}
+
+.friendship-gain-float {
+  position: fixed;
+  z-index: 311;
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #f5c842;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.85);
+  pointer-events: none;
+  transform: translate(-50%, 0);
+  opacity: 0;
+}
+
+.friendship-gain-float--active {
+  animation: friendshipGainFloat 0.9s ease-out forwards;
+}
+
+@keyframes friendshipGainFloat {
   from {
     opacity: 1;
-    transform: translate(0, 0) scale(1);
+    transform: translate(-50%, 0);
   }
   to {
     opacity: 0;
-    transform: translate(var(--drift-x), var(--rise)) scale(0.85);
+    transform: translate(-50%, -48px);
+  }
+}
+
+.card-slot.possessed.possessed--friendship-hit {
+  animation: possessedFriendshipPulse 0.6s ease-out;
+}
+
+@keyframes possessedFriendshipPulse {
+  0%, 100% {
+    filter: brightness(1);
+    box-shadow: none;
+  }
+  40% {
+    filter: brightness(1.35);
+    box-shadow: 0 0 24px rgba(245, 200, 66, 0.55);
   }
 }
 
@@ -2510,4 +2627,128 @@ button.lighthouse-attachment.is-active:hover {
 
 .demon-target-dmg {
   color: var(--gold);
+}
+
+.host-page {
+  width: 100%;
+  max-width: 720px;
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.host-page h1,
+.host-page #status,
+.host-page .host-phone-hint {
+  width: 100%;
+}
+
+.host-page .setup-form {
+  width: 100%;
+  max-width: 400px;
+  margin-inline: auto;
+}
+
+.host-page #qr {
+  width: 100%;
+}
+
+.host-phone-hint {
+  max-width: 420px;
+  margin: 1rem auto 0;
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.lobby-shell {
+  max-width: 420px;
+  margin: 1rem auto;
+  padding: 0 1rem;
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lobby-shell .lobby-panel {
+  width: 100%;
+}
+
+.lobby-panel {
+  padding: 1.25rem;
+  display: grid;
+  gap: 0.75rem;
+  text-align: center;
+}
+
+.lobby-title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.lobby-status {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--gold);
+}
+
+.lobby-hint,
+.lobby-wait-p1,
+.lobby-demon-note {
+  margin: 0;
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.lobby-label {
+  display: grid;
+  gap: 0.35rem;
+  text-align: left;
+}
+
+.lobby-select {
+  width: 100%;
+  padding: 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface2);
+  color: inherit;
+  font-size: 1rem;
+  min-height: 2.75rem;
+}
+
+.lobby-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+
+.tv-lobby {
+  margin: 2rem auto;
+  max-width: 560px;
+  padding: 2rem;
+  text-align: center;
+}
+
+.tv-lobby-title {
+  margin: 0 0 1rem;
+  font-size: 1.75rem;
+}
+
+.tv-lobby-status {
+  margin: 0 0 0.5rem;
+  font-size: 1.2rem;
+  color: var(--gold);
+}
+
+.tv-lobby-hint,
+.tv-lobby-demon {
+  margin: 0.5rem 0 0;
+  opacity: 0.9;
 }

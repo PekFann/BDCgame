@@ -1,4 +1,4 @@
-export { resolveEventEffect, resolveEventPickOne, resolveTriggerEffect } from "./triggers.js";
+export { resolveEventEffect, resolveEventPickOne, resolveTriggerEffect, isEventRollEffect, EVENT_ROLL_EFFECT_IDS } from "./triggers.js";
 export {
   resolveDiscardEffect,
   resolveEnergyDistribution,

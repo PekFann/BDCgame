@@ -1,12 +1,18 @@
 import type { GameState, PendingCardRollResume } from "../../shared/types.js";
+import { DNC } from "../../shared/cards.js";
 import {
+  dealDamageToAllDemons,
   dealDamageToDemon,
+  damagePossessed,
   discardFromHand,
   drawForPlayer,
+  gainEnergy,
   gainFriendship,
   revealDemon,
 } from "./effects/primitives.js";
 import { getPlayer, legalDamageTargets } from "./rules.js";
+import { enterDncPhase } from "./phases.js";
+import { log } from "./util.js";
 
 function addDiscardToHand(state: GameState, player: { hand: { instanceId: string; cardId: string }[] }) {
   const card = state.actionDiscard.pop();
@@ -15,6 +21,23 @@ function addDiscardToHand(state: GameState, player: { hand: { instanceId: string
 
 function demonTargets(state: GameState): string[] {
   return legalDamageTargets(state);
+}
+
+function skipToNextDncCard(state: GameState): void {
+  log(state, "Current Diurnal Cycle discarded.");
+  if (state.dncDeck.length === 0) {
+    state.winner = "demons";
+    state.phase = "game_over";
+    log(state, "Time has run out. The contract holds.");
+    return;
+  }
+  const dncId = state.dncDeck.shift()!;
+  state.currentDncId = dncId;
+  state.dncPhaseIndex = 0;
+  state.presentationHold = null;
+  state.lastDiceRoll = null;
+  log(state, `New Diurnal Cycle begins (${DNC[dncId].name}).`);
+  enterDncPhase(state, 0);
 }
 
 export function resumeCardRollEffect(state: GameState, resume: PendingCardRollResume): void {
@@ -59,6 +82,45 @@ export function resumeCardRollEffect(state: GameState, resume: PendingCardRollRe
             cardInstanceId: resume.cardInstanceId,
           };
         }
+      }
+      break;
+    case "event_morphin":
+      dealDamageToAllDemons(state, roll <= 3 ? 1 : 3);
+      log(state, `Morphin' Time: ${roll <= 3 ? 1 : 3} damage to all demons.`);
+      break;
+    case "event_dragon":
+      if (roll <= 3) {
+        for (const p of state.players) gainEnergy(p, 1, state);
+        log(state, "Pocket-Sized Dragon: all players gain 1 energy.");
+      } else {
+        for (const p of state.players) gainFriendship(p, 1);
+        log(state, "Pocket-Sized Dragon: all players gain 1 friendship.");
+      }
+      break;
+    case "event_phantom_fart":
+      if (roll <= 3) {
+        for (const p of state.players) gainFriendship(p, -1);
+        log(state, "Phantom Fart: all players lose 1 friendship.");
+      } else {
+        dealDamageToAllDemons(state, 2);
+        log(state, "Phantom Fart: demons take 2 damage.");
+      }
+      break;
+    case "event_wrong_spell":
+      if (roll <= 3) {
+        damagePossessed(state, 1);
+        log(state, "Wrong Spell: Possessed loses 1 HP.");
+      } else {
+        for (const p of state.players) gainEnergy(p, 1, state);
+        log(state, "Wrong Spell: all players gain 1 energy.");
+      }
+      break;
+    case "event_lost_hours":
+      if (roll <= 3) {
+        skipToNextDncCard(state);
+        state.pendingPostTriggerAdvance = false;
+      } else {
+        log(state, "Lost Hours: no effect.");
       }
       break;
     case "time_travel":

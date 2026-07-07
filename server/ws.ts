@@ -106,18 +106,32 @@ export function handleMessage(ws: WebSocket, raw: string, port: number): void {
   }
 
   if (msg.type === "START" && (client.role === "host" || client.role === "tv" || client.role === "player")) {
-    const possessedId = msg.possessedId as string;
-    const playerCount = Number(msg.playerCount) || 2;
-    const human = room.game.players.find((p) => p.isHuman) ?? room.game.players[0];
-    if (!human) {
+    const possessedId = (msg.possessedId as string) || room.game.lobbyPossessedId || "";
+    const connectedHumans = room.game.players.filter((p) => p.isHuman && p.isConnected);
+    if (connectedHumans.length === 0 && room.game.mode !== "solo") {
       ws.send(JSON.stringify({ type: "ERROR", message: "No player joined" }));
       return;
     }
+    const starter = client.playerId
+      ? room.game.players.find((p) => p.id === client.playerId)
+      : connectedHumans[0] ?? room.game.players[0];
+    if (!starter) {
+      ws.send(JSON.stringify({ type: "ERROR", message: "No player joined" }));
+      return;
+    }
+    if (room.game.mode !== "solo" && !starter.isHuman) {
+      ws.send(JSON.stringify({ type: "ERROR", message: "Only a joined player can start" }));
+      return;
+    }
+    const playerCount =
+      room.game.mode === "solo"
+        ? Math.max(2, Math.min(4, Number(msg.playerCount) || 2))
+        : Math.max(1, Math.min(4, connectedHumans.length));
     try {
-      applyAction(room.game, human.id, {
+      applyAction(room.game, starter.id, {
         type: "START_GAME",
         possessedId,
-        playerCount: Math.max(2, Math.min(4, playerCount)),
+        playerCount,
       });
       broadcastRoom(room);
     } catch (err) {

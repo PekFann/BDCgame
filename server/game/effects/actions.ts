@@ -150,10 +150,19 @@ export function startPlayCard(ctx: PlayContext): PendingChoice | null {
     );
   }
   if (def.effectId === "call_for_help") {
-    if (state.actionDiscard.length > 0) {
-      addDiscardToHand(state, player);
-    }
-    return null;
+    if (state.actionDiscard.length === 0) return null;
+    return pendingFromCard(
+      {
+        kind: "pick_action_discard",
+        playerId,
+        options: state.actionDiscard.map((c) => ({
+          id: c.instanceId,
+          label: getCard(c.cardId).name,
+        })),
+      },
+      cardInstanceId,
+      instance.cardId
+    );
   }
   if (def.effectId === "healthy_meal") {
     gainEnergy(player, 3, state);
@@ -235,9 +244,13 @@ function spendFriendshipForSharpTruth(player: { friendship: number }) {
   player.friendship = Math.max(0, player.friendship - 2);
 }
 
-function addDiscardToHand(state: GameState, player: { hand: { instanceId: string; cardId: string }[] }) {
-  const card = state.actionDiscard.pop();
-  if (card) player.hand.push(card);
+export function resolvePickActionDiscard(state: GameState, playerId: string, instanceId: string): void {
+  const player = getPlayer(state, playerId);
+  const idx = state.actionDiscard.findIndex((c) => c.instanceId === instanceId);
+  if (idx < 0) throw new Error("Card not in action discard");
+  const [card] = state.actionDiscard.splice(idx, 1);
+  player.hand.push(card);
+  log(state, `${player.name} takes ${getCard(card.cardId).name} from the discard pile.`);
 }
 
 function demonTargets(state: GameState): string[] {

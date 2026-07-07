@@ -1,8 +1,12 @@
 import type { GameAction, PrivateGameState, PublicGameState, CardInstance, Phase } from "../../shared/types.js";
 import cardsData from "../../data/cards.json";
+import { isCardModalBlockingPendingActions } from "./card-modal.js";
 import { openDiscussionModal } from "./discussion-modal.js";
+import { BOARD_EVENT_PENDING_KINDS } from "./pending-choice-ui.js";
 import { isGameIntroDismissed } from "./game-start-modal.js";
 import { isInputLocked } from "./input-lock.js";
+
+export { isBoardMountedEventPending } from "./pending-choice-ui.js";
 
 type StateHandler = (pub: PublicGameState, priv?: PrivateGameState) => void;
 type ErrorHandler = (message: string) => void;
@@ -158,8 +162,14 @@ export class GameClient {
     this.ws?.send(JSON.stringify({ type: "ACTION", action }));
   }
 
-  startGame(possessedId: string, playerCount: number): void {
-    this.ws?.send(JSON.stringify({ type: "START", possessedId, playerCount }));
+  startGame(possessedId: string, playerCount?: number): void {
+    this.ws?.send(
+      JSON.stringify({
+        type: "START",
+        possessedId,
+        ...(playerCount != null ? { playerCount } : {}),
+      })
+    );
   }
 }
 
@@ -314,10 +324,10 @@ export function getCardDisplayName(cardId: string): string {
   return cardNamesById[cardId] ?? cardId.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export const ENERGY_ICON = "/assets/UI/Energy icon.png";
-export const FRIENDSHIP_ICON = "/assets/UI/Friendship icon.png";
+export const ENERGY_ICON = "/assets/UI/Energy icon.svg";
+export const FRIENDSHIP_ICON = "/assets/UI/Friendship icon.svg";
 
-const EVENT_BOARD_KINDS = new Set(["event_pick_one", "donut_bandit", "haunted_pizza"]);
+const EVENT_BOARD_KINDS = BOARD_EVENT_PENDING_KINDS;
 
 export function shouldRenderEventChoiceOnBoard(
   pub: PublicGameState,
@@ -347,8 +357,7 @@ export function renderBoardEventChoice(
   if (!shouldRenderEventChoiceOnBoard(pub, priv, humanPlayerId)) return;
 
   const pc = pub.pendingChoice!;
-  const interactive =
-    !!send && !!humanPlayerId && pc.playerId === humanPlayerId && !isCardModalBlockingPendingActions();
+  const interactive = !!send && !!humanPlayerId && pc.playerId === humanPlayerId;
 
   const layout = document.createElement("div");
   layout.className = "board-event-layout";
@@ -733,12 +742,6 @@ export function renderLog(el: HTMLElement, pub: PublicGameState): void {
   el.innerHTML = pub.log.map((l: string) => `<p>${l}</p>`).join("");
 }
 
-function isCardModalBlockingPendingActions(): boolean {
-  const el = document.getElementById("card-modal");
-  if (!el || (el as HTMLElement).hidden) return false;
-  return el.dataset.mode === "resolve";
-}
-
 function createCircleButton(
   label: string,
   title: string,
@@ -904,7 +907,9 @@ export function renderPhaseActions(
   const circular = options?.circular ?? false;
   const humanPlayerId = options?.humanPlayerId;
   const eventChoiceOnBoard =
-    humanPlayerId != null && shouldRenderEventChoiceOnBoard(pub, priv, humanPlayerId);
+    humanPlayerId != null &&
+    document.getElementById("board") != null &&
+    shouldRenderEventChoiceOnBoard(pub, priv, humanPlayerId);
 
   const addBtn = (label: string, action: GameAction, className = "btn secondary", title?: string) => {
     if (circular) {
@@ -958,14 +963,14 @@ export function renderPhaseActions(
 
   if (
     pub.pendingChoice?.options &&
-    !isCardModalBlockingPendingActions() &&
+    !isCardModalBlockingPendingActions(pub) &&
     !eventChoiceOnBoard
   ) {
     for (const opt of pub.pendingChoice.options) {
       addBtn(opt.label, { type: "RESOLVE_PICK_ONE", optionId: opt.id });
     }
   }
-  if (pub.pendingChoice?.targets && !isCardModalBlockingPendingActions()) {
+  if (pub.pendingChoice?.targets && !isCardModalBlockingPendingActions(pub)) {
     const targets = pub.pendingChoice.targets;
     if (targets.length === 1) {
       addBtn(`Target demon`, { type: "SELECT_TARGET", targetId: targets[0] });

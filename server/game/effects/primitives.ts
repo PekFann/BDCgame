@@ -3,7 +3,7 @@ import type { GameState, PlayerState } from "../../../shared/types.js";
 import { getCard } from "../../../shared/cards.js";
 import { findDemon, getEffectiveAttack, getPlayer, meetsFriendshipRequirement, canTargetDemon, legalDamageTargets } from "../rules.js";
 import { clamp, log, makeInstance, rollD6 } from "../util.js";
-import { resolveEventEffect, resolveTriggerEffect } from "./triggers.js";
+import { resolveEventEffect, resolveTriggerEffect, isEventRollEffect } from "./triggers.js";
 
 export function drawFromActionDeck(state: GameState, count: number): void {
   const player = state.players.find((p) => p.id === state.pendingChoice?.playerId);
@@ -197,18 +197,22 @@ export function applyDemonPassive(state: GameState): void {
   }
 }
 
-export function drawEventCard(state: GameState, playerId: string): void {
+export function drawEventCard(state: GameState, playerId: string): boolean {
   if (state.eventDeck.length === 0) {
     state.eventDeck = state.eventDiscard.splice(0);
   }
-  if (state.eventDeck.length === 0) return;
+  if (state.eventDeck.length === 0) return false;
   const card = state.eventDeck.pop()!;
   const def = getCard(card.cardId);
   log(state, `Event drawn: ${def.name}`);
-  resolveEventCard(state, card, playerId);
+  return resolveEventCard(state, card, playerId);
 }
 
-export function resolveEventCard(state: GameState, card: { instanceId: string; cardId: string }, playerId: string): void {
+export function resolveEventCard(
+  state: GameState,
+  card: { instanceId: string; cardId: string },
+  playerId: string
+): boolean {
   const def = getCard(card.cardId);
   if (def.type === "demon") {
     const imp = {
@@ -222,15 +226,24 @@ export function resolveEventCard(state: GameState, card: { instanceId: string; c
     };
     state.imps.push(imp);
     log(state, `${def.name} enters play.`);
-    return;
+    if (def.effectId === "imp_sudden_sadness") {
+      state.modifiers.healingBlocked = true;
+      log(state, "Possessed cannot be healed until Sudden-Sadness Imp is defeated.");
+    }
+    return false;
   }
   if (def.effectId === "event_first_aid") {
     getPlayer(state, playerId).firstAidKit = true;
     log(state, `${getPlayer(state, playerId).name} keeps First Aid Kit.`);
-    return;
+    return false;
   }
   state.eventDiscard.push(card);
+  if (isEventRollEffect(def.effectId)) {
+    state.pendingCardRollResume = { effectId: def.effectId, playerId };
+    return true;
+  }
   resolveEventEffect(state, def.effectId, playerId, card.cardId);
+  return false;
 }
 
 export function applyPossessedTrigger(state: GameState, rollerId: string): void {
@@ -316,7 +329,16 @@ export function applyManifest(state: GameState): void {
       healPossessed(state, 1);
     }
   }
-  let block = state.modifiers.manifestDamageBlock;
+  let firstAidAbsorb = 0;
+  for (const p of state.players) {
+    if (p.firstAidKit) {
+      p.firstAidKit = false;
+      firstAidAbsorb = 1;
+      log(state, `${p.name}'s First Aid Kit absorbs 1 demon damage.`);
+      break;
+    }
+  }
+  let block = state.modifiers.manifestDamageBlock + firstAidAbsorb;
   state.modifiers.manifestDamageBlock = 0;
   state.modifiers.overdramaticEyeRoll = false;
 

@@ -2,6 +2,7 @@ import type { CardInstance, GameAction, PrivateGameState, PublicGameState } from
 import cardsData from "../../data/cards.json";
 import { CARD_PICK_ONE_OPTIONS, isPickOneEffect } from "./card-play-options.js";
 import { closeAnimatedModal, forceCloseModal, openAnimatedModal } from "./modal-animations.js";
+import { isBoardMountedEventPending } from "./pending-choice-ui.js";
 import { cardImg, cardName } from "./ws-client.js";
 import { isInputLocked } from "./input-lock.js";
 
@@ -111,8 +112,17 @@ export function isCardModalOpen(): boolean {
   return modalEl !== null && !modalEl.hidden;
 }
 
-export function isCardModalBlockingPendingActions(): boolean {
-  return isCardModalOpen() && modalMode === "resolve";
+export function isCardModalBlockingPendingActions(pub?: PublicGameState): boolean {
+  if (!isCardModalOpen() || modalMode !== "resolve") return false;
+  if (pub && isBoardMountedEventPending(pub, humanPlayerId)) return false;
+  return true;
+}
+
+export function handleCardModalActionError(): void {
+  if (!isCardModalOpen() || modalMode !== "resolve") return;
+  modalMode = "preview";
+  resolvingCardId = null;
+  if (modalEl) modalEl.dataset.mode = "preview";
 }
 
 export function getOpenCardInstanceId(): string | null {
@@ -181,7 +191,11 @@ function renderModalButtons(
   };
 
   const pending = pub.pendingChoice;
-  const showPending = modalMode === "resolve" && pendingBelongsToHuman(pub);
+  const showPending =
+    modalMode === "resolve" &&
+    pendingBelongsToHuman(pub) &&
+    !isBoardMountedEventPending(pub, humanPlayerId) &&
+    (!pending?.cardInstanceId || pending.cardInstanceId === instanceId);
 
   if (showPending && pending?.options) {
     for (const opt of pending.options) {
@@ -214,9 +228,6 @@ function renderModalButtons(
       addBtn(
         opt.label,
         () => {
-          modalMode = "resolve";
-          resolvingCardId = cardId;
-          openCardId = cardId;
           send({
             type: "PLAY_CARD",
             cardInstanceId: instanceId,
@@ -234,17 +245,20 @@ function renderModalButtons(
     addBtn(
       "Play Card",
       () => {
-        modalMode = "resolve";
-        resolvingCardId = cardId;
-        openCardId = cardId;
         send({ type: "PLAY_CARD", cardInstanceId: instanceId });
       },
       true
     );
-  } else if (modalMode === "preview") {
+  } else if (modalMode === "preview" && instanceId && priv.hand.some((c) => c.instanceId === instanceId)) {
     const hint = document.createElement("p");
     hint.className = "card-modal-hint";
-    hint.textContent = "Cannot play this card right now.";
+    if (pub.pendingChoice && pendingBelongsToHuman(pub) && !canPlayCard(priv, instanceId)) {
+      hint.textContent = isBoardMountedEventPending(pub, humanPlayerId)
+        ? "Resolve the event choice on the board first."
+        : "Resolve your pending choice first.";
+    } else {
+      hint.textContent = "Cannot play this card right now.";
+    }
     buttonsEl.appendChild(hint);
   }
 
@@ -282,20 +296,7 @@ export function refreshCardModalIfOpen(ctx: CardModalContext): void {
   if (!isCardModalOpen() || isClosing) return;
 
   humanPlayerId = ctx.humanPlayerId;
-  const { pub, priv, send } = ctx;
-
-  if (modalMode === "resolve" && resolvingCardId) {
-    if (!pub.pendingChoice) {
-      forceCloseCardModal();
-      return;
-    }
-    if (!pendingBelongsToHuman(pub)) {
-      forceCloseCardModal();
-      return;
-    }
-    renderModal(ctx, resolvingCardId, openInstanceId);
-    return;
-  }
+  const { pub, priv } = ctx;
 
   if (!openInstanceId) {
     forceCloseCardModal();
@@ -309,5 +310,38 @@ export function refreshCardModalIfOpen(ctx: CardModalContext): void {
   }
 
   openCardId = card.cardId;
+
+  const pending = pub.pendingChoice;
+  const pendingForOpenCard =
+    !!pending &&
+    pendingBelongsToHuman(pub) &&
+    pending.cardInstanceId === openInstanceId;
+
+  if (modalMode === "preview" && pendingForOpenCard) {
+    modalMode = "resolve";
+    resolvingCardId = card.cardId;
+    renderModal(ctx, card.cardId, card.instanceId);
+    return;
+  }
+
+  if (modalMode === "resolve" && resolvingCardId) {
+    if (!pending) {
+      forceCloseCardModal();
+      return;
+    }
+    if (!pendingBelongsToHuman(pub)) {
+      forceCloseCardModal();
+      return;
+    }
+    if (pending.cardInstanceId && pending.cardInstanceId !== openInstanceId) {
+      modalMode = "preview";
+      resolvingCardId = null;
+      renderModal(ctx, card.cardId, card.instanceId);
+      return;
+    }
+    renderModal(ctx, resolvingCardId, openInstanceId);
+    return;
+  }
+
   renderModal(ctx, card.cardId, card.instanceId);
 }

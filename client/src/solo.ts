@@ -25,7 +25,7 @@ import {
   setPrevHandIdsForPlayer,
   syncPrevHandIdsForPlayer,
 } from "./card-animations.js";
-import { ensureCardModal, openCardModal, refreshCardModalIfOpen } from "./card-modal.js";
+import { ensureCardModal, handleCardModalActionError, openCardModal, refreshCardModalIfOpen } from "./card-modal.js";
 import { closeDrawPhaseModalIfOpen, openDrawPhaseModalIfNeeded, refreshDrawPhaseModal } from "./draw-phase-modal.js";
 import { renderDiscardPileSlot } from "./discard-pile-modal.js";
 import {
@@ -44,12 +44,18 @@ import {
   setGameIntroSend,
 } from "./game-start-modal.js";
 import { refreshTriggerRollModal, resetTriggerRollModal } from "./trigger-roll-modal.js";
+import { resetTimeTravelModal } from "./time-travel-modal.js";
 import { refreshTimeTravelModal, resetTimeTravelModal } from "./time-travel-modal.js";
 import { refreshDemonTargetModal, resetDemonTargetModal } from "./demon-target-modal.js";
 import { refreshHandDiscardModal, resetHandDiscardModal } from "./hand-discard-modal.js";
+import { refreshCallForHelpModal, resetCallForHelpModal } from "./call-for-help-modal.js";
 import { playBoardDamageVfx, resetBoardDamageVfx } from "./board-damage-vfx.js";
 import { initFullscreenButton } from "./fullscreen.js";
-import { runFriendshipGainVfx } from "./friendship-vfx.js";
+import {
+  ensureFriendshipBaseline,
+  resetFriendshipVfxTracking,
+  scheduleFriendshipGainVfx,
+} from "./friendship-vfx.js";
 import { isInputLocked } from "./input-lock.js";
 import { handlePresentationUpdate, resetPresentationLock } from "./phase-orchestrator.js";
 import { refreshPhaseToast, resetPhaseToast } from "./phase-toast.js";
@@ -63,16 +69,6 @@ let gameStartedResolve: (() => void) | null = null;
 let gameStartedReject: ((err: Error) => void) | null = null;
 let selectedPlayerId = "";
 let lastRenderedCycle = 0;
-let prevHumanFriendship: number | null = null;
-
-function maybeTriggerFriendshipVfx(pub: PublicGameState, humanPlayerId: string): void {
-  const human = pub.players.find((p) => p.id === humanPlayerId);
-  if (!human) return;
-  if (prevHumanFriendship !== null && human.friendship > prevHumanFriendship) {
-    void runFriendshipGainVfx(human.friendship - prevHumanFriendship);
-  }
-  prevHumanFriendship = human.friendship;
-}
 let drawIdleRetryScheduled = false;
 
 function showSetupError(message: string): void {
@@ -115,6 +111,7 @@ function showGame(): void {
   document.getElementById("game")!.style.display = "grid";
   document.body.classList.add("game-view");
   ensureCardModal();
+  initFullscreenButton(document.getElementById("game"));
 }
 
 function resolveViewingPlayerId(pub: PublicGameState, humanPlayerId: string): string {
@@ -146,6 +143,10 @@ function closeStalePhaseModals(pub: PublicGameState): void {
   if (pub.phase !== "draw") {
     closeDrawPhaseModalIfOpen();
   }
+  if (pub.phase !== "triggers") {
+    resetTriggerRollModal();
+    resetTimeTravelModal();
+  }
 }
 
 function renderBoardWithRoster(
@@ -168,6 +169,7 @@ function renderBoardWithRoster(
   if (priv) {
     renderBoardEventChoice(board, pub, priv, humanPlayerId, send);
   }
+  scheduleFriendshipGainVfx(() => client.publicState, humanPlayerId, "solo");
 }
 
 function renderFooterChrome(
@@ -178,7 +180,7 @@ function renderFooterChrome(
 ): void {
   const discardSlot = document.getElementById("hand-discard");
   if (discardSlot) {
-    renderDiscardPileSlot(discardSlot, pub);
+    renderDiscardPileSlot(discardSlot, pub, () => client.publicState);
   }
   renderDiscussionButton(document.getElementById("hand-discussion")!, pub, priv, send);
   const possessedActions = document.getElementById("possessed-actions");
@@ -267,10 +269,11 @@ function refreshGameplayModals(
   modalCtx: { pub: PublicGameState; priv: PrivateGameState; send: (a: Parameters<typeof client.sendAction>[0]) => void; humanPlayerId: string }
 ): void {
   refreshCardModalIfOpen(modalCtx);
-  refreshDrawPhaseModal(pub, humanPlayerId, send);
-  refreshTriggerRollModal(pub, priv, send);
+  refreshDrawPhaseModal(pub, humanPlayerId, send, "solo");
+  refreshTriggerRollModal(pub, priv, send, () => client.publicState);
   refreshTimeTravelModal(pub, priv, send);
   refreshHandDiscardModal(pub, priv, send, humanPlayerId);
+  refreshCallForHelpModal(pub, send, humanPlayerId);
   refreshDemonTargetModal(pub, priv, send);
   refreshPhaseToast(pub);
 }
@@ -361,7 +364,7 @@ function renderGameUI(): void {
   const send = (a: Parameters<typeof client.sendAction>[0]) => client.sendAction(a);
   setGameIntroSend(send);
   const humanPlayerId = getHumanPlayerId(pub);
-  maybeTriggerFriendshipVfx(pub, humanPlayerId);
+  ensureFriendshipBaseline(pub, humanPlayerId);
   const modalCtx = { pub, priv, send, humanPlayerId };
   const handEl = document.getElementById("hand")!;
   const actionsEl = document.getElementById("actions")!;
@@ -375,6 +378,8 @@ function renderGameUI(): void {
       if (lastRenderedCycle > 0) {
         selectedPlayerId = "";
         resetPresentationLock();
+        resetTriggerRollModal();
+        resetTimeTravelModal();
       }
       lastRenderedCycle = pub.cycle;
     }
@@ -442,7 +447,7 @@ async function init() {
   resetDemonTargetModal();
   resetPhaseToast();
   lastRenderedCycle = 0;
-  prevHumanFriendship = null;
+  resetFriendshipVfxTracking();
   drawIdleRetryScheduled = false;
   selectedPlayerId = "";
   initFullscreenButton();
@@ -477,8 +482,8 @@ async function init() {
     if (!pub || !priv) return;
     const send = (a: Parameters<typeof client.sendAction>[0]) => client.sendAction(a);
     const humanPlayerId = getHumanPlayerId(pub);
-    openDrawPhaseModalIfNeeded(pub, humanPlayerId, send);
-    refreshTriggerRollModal(pub, priv, send);
+    openDrawPhaseModalIfNeeded(pub, humanPlayerId, send, "solo");
+    refreshTriggerRollModal(pub, priv, send, () => client.publicState);
     refreshPhaseToast(pub);
     renderGameUI();
   });
@@ -486,6 +491,17 @@ async function init() {
   client.onErrorMessage((message) => {
     if (document.getElementById("game")?.style.display !== "none") {
       showGameError(message);
+      const pub = client.publicState;
+      const priv = client.privateState;
+      if (pub && priv) {
+        handleCardModalActionError();
+        refreshCardModalIfOpen({
+          pub,
+          priv,
+          send: (a) => client.sendAction(a),
+          humanPlayerId: getHumanPlayerId(pub),
+        });
+      }
     } else {
       showSetupError(message);
     }
@@ -541,9 +557,10 @@ async function init() {
       resetTimeTravelModal();
       resetDemonTargetModal();
       resetHandDiscardModal();
+      resetCallForHelpModal();
       resetBoardDamageVfx();
       resetPhaseToast();
-      prevHumanFriendship = null;
+      resetFriendshipVfxTracking();
       roomId = await createSoloRoom();
       await client.connect({ roomId, role: "solo", slot: 1, name: "You" });
       client.startGame(possessedId, playerCount);

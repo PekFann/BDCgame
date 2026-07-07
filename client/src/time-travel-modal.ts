@@ -1,6 +1,6 @@
 import type { GameAction, PrivateGameState, PublicGameState } from "../../shared/types.js";
 import { closeAnimatedModal, forceCloseModal, openAnimatedModal } from "./modal-animations.js";
-import { isTriggerDiceAnimDone } from "./trigger-roll-modal.js";
+import { isRerollDiceAnimReady } from "./trigger-roll-modal.js";
 
 type SendFn = (action: GameAction) => void;
 
@@ -47,7 +47,12 @@ function populatePanel(
   const human = pub.players.find((p) => p.isHuman);
   const isOwnOffer = awaiting.isHuman && awaiting.id === human?.id;
   const rolledBy = rollerName(pub, prompt.rollerId);
-  const contextLabel = prompt.context === "trigger" ? "trigger roll" : "card roll";
+  const contextLabel =
+    prompt.context === "trigger"
+      ? "trigger roll"
+      : prompt.context === "event_effect"
+        ? "event roll"
+        : "card roll";
 
   let message: string;
   if (isOwnOffer) {
@@ -89,7 +94,10 @@ export function refreshTimeTravelModal(
     return;
   }
 
-  if (prompt.context === "trigger" && !isTriggerDiceAnimDone()) {
+  if (
+    (prompt.context === "trigger" || prompt.context === "event_effect") &&
+    !isRerollDiceAnimReady(pub)
+  ) {
     if (!root.hidden) closeAnimatedModal(root, panel, () => {});
     return;
   }

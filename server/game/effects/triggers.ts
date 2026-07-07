@@ -1,15 +1,25 @@
 import type { GameState } from "../../../shared/types.js";
 import { getPlayer } from "../rules.js";
 import {
-  dealDamageToAllDemons,
   damagePossessed,
   discardFromHand,
   drawForPlayer,
   gainEnergy,
   gainFriendship,
-  rollAndStore,
 } from "./primitives.js";
 import { log, rollD6 } from "../util.js";
+
+export const EVENT_ROLL_EFFECT_IDS = new Set([
+  "event_morphin",
+  "event_dragon",
+  "event_phantom_fart",
+  "event_wrong_spell",
+  "event_lost_hours",
+]);
+
+export function isEventRollEffect(effectId: string): boolean {
+  return EVENT_ROLL_EFFECT_IDS.has(effectId);
+}
 
 export function resolveTriggerEffect(state: GameState, effectId: string, rollerId: string): void {
   const roller = getPlayer(state, rollerId);
@@ -128,20 +138,12 @@ export function resolveEventEffect(
       for (const p of state.players) gainEnergy(p, 2, state);
       log(state, "All players gain 2 energy.");
       break;
-    case "event_morphin": {
-      const roll = rollAndStore(state, playerId);
-      dealDamageToAllDemons(state, roll <= 3 ? 1 : 3);
+    case "event_morphin":
+    case "event_dragon":
+    case "event_phantom_fart":
+    case "event_wrong_spell":
+    case "event_lost_hours":
       break;
-    }
-    case "event_dragon": {
-      const roll = rollAndStore(state, playerId);
-      if (roll <= 3) {
-        for (const p of state.players) gainEnergy(p, 1, state);
-      } else {
-        for (const p of state.players) gainFriendship(p, 1);
-      }
-      break;
-    }
     case "event_double_doom":
       state.modifiers.doubleDrawPhase = true;
       log(state, "Next draw phase draws twice.");
@@ -172,29 +174,6 @@ export function resolveEventEffect(
         ],
       };
       break;
-    case "event_phantom_fart": {
-      const roll = rollAndStore(state, playerId);
-      if (roll <= 3) {
-        for (const p of state.players) gainFriendship(p, -1);
-      } else {
-        dealDamageToAllDemons(state, 2);
-      }
-      break;
-    }
-    case "event_wrong_spell": {
-      const roll = rollAndStore(state, playerId);
-      if (roll <= 3) damagePossessed(state, 1);
-      else for (const p of state.players) gainEnergy(p, 1, state);
-      break;
-    }
-    case "event_lost_hours": {
-      const roll = rollAndStore(state, playerId);
-      if (roll <= 3 && state.dncDeck.length > 0) {
-        state.dncDeck.pop();
-        log(state, "Current Diurnal Cycle discarded.");
-      }
-      break;
-    }
   }
 }
 

@@ -102,6 +102,11 @@ export function pickAiDrawChoice(player: PlayerState): DrawChoice {
 }
 
 export function pickAiAction(state: GameState, player: PlayerState): GameAction | null {
+  const prompt = state.pendingRerollPrompt;
+  if (prompt?.awaitingPlayerId === player.id && !player.isHuman) {
+    return { type: "DECLINE_REROLL" };
+  }
+
   if (state.pendingChoice?.playerId === player.id) {
     const pending = state.pendingChoice;
     if (pending.options?.length) {
@@ -152,12 +157,25 @@ export function pickAiAction(state: GameState, player: PlayerState): GameAction 
 export function runAiTurns(state: GameState, apply: (playerId: string, action: GameAction) => void): void {
   let safety = 50;
   while (safety-- > 0) {
+    if (state.phase === "game_over" || state.presentationHold) break;
+
+    if (state.pendingRerollPrompt && !state.pendingChoice) {
+      const awaitingId = state.pendingRerollPrompt.awaitingPlayerId;
+      const awaiting = awaitingId ? state.players.find((p) => p.id === awaitingId) : undefined;
+      if (awaiting && !awaiting.isHuman) {
+        const human = state.players.find((p) => p.isHuman);
+        if (human) {
+          apply(human.id, { type: "DECLINE_REROLL" });
+          if (state.winner !== null) return;
+          continue;
+        }
+      }
+      break;
+    }
+
     if (
-      state.phase === "game_over" ||
-      state.presentationHold ||
-      state.pendingRerollPrompt ||
-      (state.pendingChoice?.playerId &&
-        state.players.find((p) => p.id === state.pendingChoice!.playerId)?.isHuman)
+      state.pendingChoice?.playerId &&
+      state.players.find((p) => p.id === state.pendingChoice!.playerId)?.isHuman
     ) {
       break;
     }

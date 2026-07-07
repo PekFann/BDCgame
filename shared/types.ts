@@ -94,7 +94,8 @@ export interface PendingChoice {
     | "talk_it_out"
     | "event_pick_one"
     | "donut_bandit"
-    | "haunted_pizza";
+    | "haunted_pizza"
+    | "pick_action_discard";
   playerId: string;
   cardInstanceId?: string;
   cardId?: string;
@@ -124,7 +125,7 @@ export type TriggerOutcome = "trigger" | "neutral" | "event";
 export interface PendingRerollPrompt {
   roll: number;
   rollerId: string;
-  context: "trigger" | "card";
+  context: "trigger" | "card" | "event_effect";
   queue: { playerId: string; isHuman: boolean; name: string }[];
   queueIndex: number;
   awaitingPlayerId: string | null;
@@ -201,7 +202,9 @@ export interface GameState {
   introAcknowledged: boolean;
   pendingRerollPrompt: PendingRerollPrompt | null;
   pendingCardRollResume: PendingCardRollResume | null;
+  pendingPostTriggerAdvance: boolean;
   pendingRerollTimeTravelId: string | null;
+  lobbyPossessedId: string | null;
 }
 
 export interface PublicPlayerState {
@@ -258,6 +261,8 @@ export interface PublicGameState {
   currentDncNightTotal: number;
   currentDncPhases: DncCyclePhase[];
   pendingRerollPrompt: PendingRerollPrompt | null;
+  lobbyPossessedId: string | null;
+  connectedHumanCount: number;
 }
 
 export type DiscussionCategory =
@@ -298,6 +303,7 @@ export interface PrivateGameState {
 
 export type GameAction =
   | { type: "START_GAME"; possessedId: string; playerCount: number }
+  | { type: "SET_LOBBY_POSSESSED"; possessedId: string }
   | { type: "CHOOSE_DRAW"; choice: DrawChoice }
   | { type: "PLAY_CARD"; cardInstanceId: string; targetId?: string; pickOptionId?: string }
   | { type: "REST_VOTE"; vote: boolean }

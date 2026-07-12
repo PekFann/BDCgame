@@ -44,7 +44,6 @@ import {
   setGameIntroSend,
 } from "./game-start-modal.js";
 import { refreshTriggerRollModal, resetTriggerRollModal } from "./trigger-roll-modal.js";
-import { resetTimeTravelModal } from "./time-travel-modal.js";
 import { refreshTimeTravelModal, resetTimeTravelModal } from "./time-travel-modal.js";
 import { refreshDemonTargetModal, resetDemonTargetModal } from "./demon-target-modal.js";
 import { refreshHandDiscardModal, resetHandDiscardModal } from "./hand-discard-modal.js";

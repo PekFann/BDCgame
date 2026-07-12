@@ -1,16 +1,50 @@
 // Phone + solo only — do not import from tv.ts.
 import type { PublicGameState } from "../../shared/types.js";
-import { FRIENDSHIP_ICON } from "./ws-client.js";
+import { FRIENDSHIP_ICON } from "./ui-icons.js";
 
 export type FriendshipVfxMode = "solo" | "phone";
 
-const DURATION_MS = 1200;
+const DURATION_MS = 1100;
+const BURST_STAGGER_MS = 120;
+const FRIENDSHIP_ICON_URL = encodeURI(FRIENDSHIP_ICON);
+
+/** Preload friendship icon so burst particles render immediately. */
+new Image().src = FRIENDSHIP_ICON_URL;
+
+/** Option IDs that grant friendship — snapshot before send so VFX detects the gain. */
+export const FRIENDSHIP_GAIN_OPTION_IDS = new Set(["friendship", "friendship2", "friendship_all"]);
+
+/** Card effectIds that grant friendship on direct PLAY_CARD (no pick-one). */
+export const DIRECT_FRIENDSHIP_EFFECT_IDS = new Set(["good_old_days"]);
 
 let prevFriendship: number | null = null;
+/** Baseline captured on player action (card/draw click); takes priority over prevFriendship. */
+let friendshipSnapshotAtAction: number | null = null;
+/** Set on draw-phase friendship click; consumed on next scheduled check. */
+let pendingDrawFriendshipGain: number | null = null;
 let scheduleGen = 0;
+let vfxLayer: HTMLElement | null = null;
+
+function ensureVfxLayer(): HTMLElement {
+  if (vfxLayer) return vfxLayer;
+  vfxLayer = document.createElement("div");
+  vfxLayer.id = "friendship-vfx-layer";
+  document.body.appendChild(vfxLayer);
+  return vfxLayer;
+}
+
+export function isFriendshipGainOption(optionId: string): boolean {
+  return FRIENDSHIP_GAIN_OPTION_IDS.has(optionId);
+}
+
+export function markPendingDrawFriendshipGain(amount = 1): void {
+  pendingDrawFriendshipGain = amount;
+}
 
 export function resetFriendshipVfxTracking(): void {
   prevFriendship = null;
+  friendshipSnapshotAtAction = null;
+  pendingDrawFriendshipGain = null;
   scheduleGen = 0;
 }
 
@@ -21,7 +55,10 @@ export function ensureFriendshipBaseline(pub: PublicGameState, humanPlayerId: st
 
 export function snapshotFriendshipBeforeChoice(pub: PublicGameState, humanPlayerId: string): void {
   const human = pub.players.find((p) => p.id === humanPlayerId);
-  if (human) prevFriendship = human.friendship;
+  if (human) {
+    friendshipSnapshotAtAction = human.friendship;
+    prevFriendship = human.friendship;
+  }
 }
 
 /** @deprecated Use ensureFriendshipBaseline or snapshotFriendshipBeforeChoice */
@@ -36,18 +73,41 @@ export function checkFriendshipGainVfx(
 ): void {
   const human = pub.players.find((p) => p.id === humanPlayerId);
   if (!human) return;
-  if (prevFriendship !== null && human.friendship > prevFriendship) {
-    runFriendshipGainVfx(human.friendship - prevFriendship, mode);
-  }
-  if (prevFriendship === null || human.friendship >= prevFriendship) {
+
+  if (pendingDrawFriendshipGain !== null) {
+    const amount = pendingDrawFriendshipGain;
+    pendingDrawFriendshipGain = null;
+    if (import.meta.env.DEV) {
+      console.debug("[friendship-vfx] draw pending", { amount, current: human.friendship });
+    }
+    runFriendshipGainVfx(amount, mode);
     prevFriendship = human.friendship;
+    friendshipSnapshotAtAction = null;
+    return;
   }
+
+  const baseline = friendshipSnapshotAtAction ?? prevFriendship;
+  const gained = baseline !== null && human.friendship > baseline ? human.friendship - baseline : 0;
+
+  if (import.meta.env.DEV) {
+    console.debug("[friendship-vfx]", {
+      baseline,
+      current: human.friendship,
+      gained,
+      actionSnapshot: friendshipSnapshotAtAction,
+    });
+  }
+
+  if (gained > 0) {
+    runFriendshipGainVfx(gained, mode);
+    friendshipSnapshotAtAction = null;
+  }
+
+  prevFriendship = human.friendship;
 }
 
 export function runFriendshipGainVfxAfterDrawChoice(amount: number, mode: FriendshipVfxMode): void {
-  if (amount <= 0) return;
-  runFriendshipGainVfx(amount, mode);
-  prevFriendship = (prevFriendship ?? 0) + amount;
+  markPendingDrawFriendshipGain(amount);
 }
 
 export function scheduleFriendshipGainVfx(
@@ -61,7 +121,8 @@ export function scheduleFriendshipGainVfx(
     requestAnimationFrame(() => {
       if (gen !== scheduleGen) return;
       const pub = getPub();
-      if (pub) checkFriendshipGainVfx(pub, humanPlayerId, mode);
+      if (!pub) return;
+      checkFriendshipGainVfx(pub, humanPlayerId, mode);
     });
   });
 }
@@ -77,20 +138,26 @@ function resolveAnchor(mode: FriendshipVfxMode): { rect: DOMRect; element: HTMLE
       document.getElementById("mini-board");
   }
   if (el) {
-    return { rect: el.getBoundingClientRect(), element: el };
+    const rect = el.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      return { rect, element: el };
+    }
+    if (import.meta.env.DEV) {
+      console.debug("[friendship-vfx] anchor zero-size, using viewport fallback");
+    }
   }
   const cx = window.innerWidth / 2;
   const cy = window.innerHeight * 0.6;
-  return { rect: new DOMRect(cx - 40, cy - 40, 80, 80), element: null };
+  return { rect: new DOMRect(cx - 40, cy - 40, 80, 80), element: el };
 }
 
-function spawnGainFloater(rect: DOMRect, amount: number): void {
+function spawnGainFloater(layer: HTMLElement, rect: DOMRect, amount: number): void {
   const el = document.createElement("span");
   el.className = "friendship-gain-float";
   el.textContent = `+${amount}`;
   el.style.left = `${rect.left + rect.width / 2}px`;
   el.style.top = `${rect.top + rect.height * 0.2}px`;
-  document.body.appendChild(el);
+  layer.appendChild(el);
   requestAnimationFrame(() => el.classList.add("friendship-gain-float--active"));
   setTimeout(() => el.remove(), 950);
 }
@@ -105,34 +172,41 @@ function pulsePossessed(element: HTMLElement): void {
 export function runFriendshipGainVfx(amount: number, mode: FriendshipVfxMode): void {
   if (amount <= 0) return;
 
+  const layer = ensureVfxLayer();
   const { rect, element } = resolveAnchor(mode);
-  const count = Math.min(16, Math.max(4, amount * 4));
+  const count = Math.min(24, Math.max(8, amount * 6));
   const particles: HTMLElement[] = [];
-  const spread = Math.max(rect.width * 0.8, 48);
+  const originX = rect.left + rect.width / 2;
+  const originY = rect.top + rect.height / 2;
+  const particleSize = mode === "solo" ? 32 : 24;
 
   if (mode === "solo" && element?.classList.contains("possessed")) {
     pulsePossessed(element);
   }
 
-  spawnGainFloater(rect, amount);
+  spawnGainFloater(layer, rect, amount);
 
   for (let i = 0; i < count; i++) {
     const img = document.createElement("img");
-    img.src = FRIENDSHIP_ICON;
+    img.src = FRIENDSHIP_ICON_URL;
     img.alt = "";
-    img.className = `friendship-particle friendship-particle--${mode}`;
-    const x = rect.left + rect.width / 2 + (Math.random() - 0.5) * spread;
-    const y = rect.bottom - 8;
-    img.style.left = `${x}px`;
-    img.style.top = `${y}px`;
-    img.style.setProperty("--drift-x", `${(Math.random() - 0.5) * 60}px`);
-    img.style.setProperty("--rise", `${-70 - Math.random() * 90}px`);
-    img.style.animationDelay = `${i * 40}ms`;
-    document.body.appendChild(img);
+    img.decoding = "async";
+    img.loading = "eager";
+    img.className = `friendship-particle friendship-particle--burst friendship-particle--${mode}`;
+    img.style.width = `${particleSize}px`;
+    img.style.height = `${particleSize}px`;
+    img.style.left = `${originX}px`;
+    img.style.top = `${originY}px`;
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 60 + Math.random() * 80;
+    img.style.setProperty("--burst-x", `${Math.cos(angle) * distance}px`);
+    img.style.setProperty("--burst-y", `${Math.sin(angle) * distance}px`);
+    img.style.animationDelay = `${Math.random() * BURST_STAGGER_MS}ms`;
+    layer.appendChild(img);
     particles.push(img);
   }
 
   setTimeout(() => {
     for (const p of particles) p.remove();
-  }, DURATION_MS + count * 40);
+  }, DURATION_MS + BURST_STAGGER_MS);
 }

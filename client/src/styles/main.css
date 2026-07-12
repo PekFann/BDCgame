@@ -73,7 +73,7 @@ body::before {
   pointer-events: none;
 }
 
-body > *:not(#ambient-canvas):not(.card-modal):not(.phase-toast):not(.flying-card) {
+body > *:not(#ambient-canvas):not(#friendship-vfx-layer):not(.card-modal):not(.phase-toast):not(.flying-card):not(.input-lock-overlay) {
   position: relative;
   z-index: 2;
 }
@@ -864,7 +864,7 @@ a:hover {
 .board-flash {
   position: absolute;
   inset: 0;
-  background: rgba(201, 162, 77, 0.45);
+  background: rgba(220, 38, 38, 0.5);
   opacity: 0;
   pointer-events: none;
   z-index: 20;
@@ -891,15 +891,22 @@ a:hover {
   0%,
   100% {
     transform: translateX(0);
+    filter: brightness(1);
+    box-shadow: none;
   }
   15% {
     transform: translateX(-4px) rotate(-1deg);
+    filter: brightness(1.25);
+    box-shadow: 0 0 28px rgba(229, 57, 53, 0.7);
   }
   30% {
     transform: translateX(4px) rotate(1deg);
+    filter: brightness(1.15);
+    box-shadow: 0 0 20px rgba(229, 57, 53, 0.5);
   }
   45% {
     transform: translateX(-3px);
+    box-shadow: 0 0 14px rgba(229, 57, 53, 0.35);
   }
   60% {
     transform: translateX(3px);
@@ -981,11 +988,28 @@ a:hover {
 }
 
 /* 3D dice (modal + overlay) */
+.trigger-roll-dice-host {
+  width: 140px;
+  height: 140px;
+  min-height: 140px;
+  margin: 1rem auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.trigger-roll-dice-host.is-collapsed {
+  height: 0;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
 .dice-scene {
   width: 110px;
   height: 110px;
   perspective: 600px;
-  margin: 1rem auto;
+  margin: 0 auto;
 }
 
 .dice-cube-3d {
@@ -1001,21 +1025,31 @@ a:hover {
 }
 
 .dice-cube-3d.is-landed {
-  transition: transform 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: none;
 }
 
 .dice-cube-3d.is-holding {
-  transition: transform 1.2s cubic-bezier(0.22, 1, 0.36, 1);
   filter: brightness(1.06);
-}
-
-.dice-scene.is-landed-pause {
   animation: dice-landed-breathe 0.7s ease-in-out;
 }
 
 @keyframes dice-landed-breathe {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.03); }
+  0%, 100% { filter: brightness(1.06); }
+  50% { filter: brightness(1.14); }
+}
+
+.dice-scene.dice-scene--scale-out {
+  animation: diceScaleOut 0.45s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  transform-origin: center center;
+}
+
+@keyframes diceScaleOut {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(0);
+  }
 }
 
 .dice-face {
@@ -1033,8 +1067,8 @@ a:hover {
 }
 
 .dice-pip {
-  width: 14px;
-  height: 14px;
+  width: 17px;
+  height: 17px;
   border-radius: 50%;
   background: #fff;
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.15);
@@ -2159,6 +2193,11 @@ a:hover {
   animation: dice-result-reveal 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+.dice-roll-result--compact {
+  font-size: 2rem;
+  margin: 0.25rem 0 0.5rem;
+}
+
 @keyframes dice-result-reveal {
   from {
     opacity: 0;
@@ -2222,6 +2261,11 @@ a:hover {
 .dice-scene--large {
   width: 140px;
   height: 140px;
+}
+
+.dice-scene--large .dice-pip {
+  width: 18px;
+  height: 18px;
 }
 
 .dice-scene--large .dice-face-front  { transform: rotateY(0deg) translateZ(70px); }
@@ -2489,13 +2533,27 @@ button.lighthouse-attachment.is-active:hover {
   background: transparent;
 }
 
+/* Friendship VFX layer — fixed overlay for particles and floaters */
+#friendship-vfx-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 310;
+  overflow: visible;
+}
+
 /* Friendship gain particles */
 .friendship-particle {
   position: fixed;
   pointer-events: none;
   z-index: 310;
-  transform: translate(-50%, -100%);
-  animation: friendshipRise 1.2s ease-out forwards;
+  display: block;
+  object-fit: contain;
+}
+
+.friendship-particle--burst {
+  transform: translate(-50%, -50%);
+  animation: friendshipBurst 1.1s ease-out forwards;
 }
 
 .friendship-particle--solo {
@@ -2508,18 +2566,18 @@ button.lighthouse-attachment.is-active:hover {
   height: 24px;
 }
 
-@keyframes friendshipRise {
+@keyframes friendshipBurst {
   0% {
     opacity: 0;
-    transform: translate(-50%, -100%) scale(0.6);
+    transform: translate(-50%, -50%) scale(0.3);
   }
-  15% {
+  12% {
     opacity: 1;
-    transform: translate(-50%, -100%) scale(1.1);
+    transform: translate(-50%, -50%) scale(1.15);
   }
   100% {
     opacity: 0;
-    transform: translate(calc(-50% + var(--drift-x)), calc(-100% + var(--rise))) scale(0.85);
+    transform: translate(calc(-50% + var(--burst-x)), calc(-50% + var(--burst-y))) scale(0.7);
   }
 }
 
@@ -2528,7 +2586,7 @@ button.lighthouse-attachment.is-active:hover {
   z-index: 311;
   font-size: 1.35rem;
   font-weight: 800;
-  color: #f5c842;
+  color: #ec407a;
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.85);
   pointer-events: none;
   transform: translate(-50%, 0);
@@ -2554,6 +2612,10 @@ button.lighthouse-attachment.is-active:hover {
   animation: possessedFriendshipPulse 0.6s ease-out;
 }
 
+.card-slot.possessed.possessed--friendship-hit img {
+  filter: brightness(1.2);
+}
+
 @keyframes possessedFriendshipPulse {
   0%, 100% {
     filter: brightness(1);
@@ -2561,7 +2623,7 @@ button.lighthouse-attachment.is-active:hover {
   }
   40% {
     filter: brightness(1.35);
-    box-shadow: 0 0 24px rgba(245, 200, 66, 0.55);
+    box-shadow: 0 0 28px rgba(236, 64, 122, 0.7), 0 0 14px rgba(244, 143, 177, 0.55);
   }
 }
 

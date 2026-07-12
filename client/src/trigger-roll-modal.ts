@@ -1,6 +1,11 @@
 import type { GameAction, PrivateGameState, PublicGameState } from "../../shared/types.js";
 import { closeDrawPhaseModalIfOpen } from "./draw-phase-modal.js";
-import { runTriggerDiceAnimation, runTriggerRollModalPresentation, showRollResultWaiting } from "./dice-animation.js";
+import {
+  hasLandedDiceHost,
+  runTriggerDiceAnimation,
+  runTriggerRollModalPresentation,
+  showRollResultWaiting,
+} from "./dice-animation.js";
 import { isGameIntroDismissed } from "./game-start-modal.js";
 import { closeAnimatedModal, forceCloseModal, openAnimatedModal } from "./modal-animations.js";
 
@@ -127,7 +132,7 @@ async function runDiceAnimIfNeeded(
     const { root } = ensureTriggerRollModal();
     if (root.hidden) openAnimatedModal(root, panel);
 
-    await runTriggerDiceAnimation(panel, roll, { revealNumber: true });
+    await runTriggerDiceAnimation(panel, roll, { revealNumber: false });
     completedDiceAnimKey = key;
 
     const latest = getPub?.() ?? pub;
@@ -179,7 +184,8 @@ export async function runTriggerRollPresentationIfNeeded(
   try {
     const context = rollContext(pub);
     const animKey = diceAnimKey(pub, hold.roll, context);
-    const skipDice = completedDiceAnimKey === animKey;
+    // Prefer reusing a landed cube even if anim-key context drifted (avoids re-tumble hang).
+    const skipDice = completedDiceAnimKey === animKey || hasLandedDiceHost(panel, hold.roll);
     await runTriggerRollModalPresentation(panel, pub, hold, { skipDice, send });
     outcomePresentedKey = key;
     forceCloseModal(root, panel);
@@ -209,6 +215,7 @@ export function refreshTriggerRollModal(
 
   if (pub.presentationHold?.at === "post_trigger_roll") {
     if (root.hidden) openAnimatedModal(root, panel);
+    // Retry until Continue/outcome is shown (guards against silent stalls on Resolving…).
     if (
       !isTriggerRollPresentationRunning() &&
       !isTriggerRollOutcomePresented(pub)
@@ -223,9 +230,6 @@ export function refreshTriggerRollModal(
     if (root.hidden) openAnimatedModal(root, panel);
     const context = rollContext(pub);
     const key = diceAnimKey(pub, roll, context);
-    if (completedDiceAnimKey !== key) {
-      completedDiceAnimKey = null;
-    }
     if (!diceAnimRunning) {
       if (completedDiceAnimKey === key) {
         if (
@@ -234,11 +238,7 @@ export function refreshTriggerRollModal(
           !panel.querySelector(".card-modal-buttons")
         ) {
           showRollResultWaiting(panel, roll);
-        } else if (
-          rollSent &&
-          !pub.pendingRerollPrompt &&
-          pub.presentationHold?.at !== "post_trigger_roll"
-        ) {
+        } else if (rollSent && !pub.pendingRerollPrompt) {
           showRollResultWaiting(panel, roll);
         }
       } else {

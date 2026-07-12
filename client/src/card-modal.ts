@@ -1,6 +1,7 @@
 import type { CardInstance, GameAction, PrivateGameState, PublicGameState } from "../../shared/types.js";
 import cardsData from "../../data/cards.json";
 import { CARD_PICK_ONE_OPTIONS, isPickOneEffect } from "./card-play-options.js";
+import { DIRECT_FRIENDSHIP_EFFECT_IDS, isFriendshipGainOption, snapshotFriendshipBeforeChoice } from "./friendship-vfx.js";
 import { closeAnimatedModal, forceCloseModal, openAnimatedModal } from "./modal-animations.js";
 import { isBoardMountedEventPending } from "./pending-choice-ui.js";
 import { cardImg, cardName } from "./ws-client.js";
@@ -8,6 +9,12 @@ import { isInputLocked } from "./input-lock.js";
 
 type SendFn = (action: GameAction) => void;
 type ModalMode = "preview" | "resolve";
+
+function snapshotIfFriendshipGain(pub: PublicGameState, humanPlayerId: string, optionId: string): void {
+  if (isFriendshipGainOption(optionId)) {
+    snapshotFriendshipBeforeChoice(pub, humanPlayerId);
+  }
+}
 
 interface CardDef {
   id: string;
@@ -203,6 +210,7 @@ function renderModalButtons(
       addBtn(
         opt.label,
         () => {
+          snapshotIfFriendshipGain(pub, humanPlayerId, opt.id);
           send({ type: "RESOLVE_PICK_ONE", optionId: opt.id });
           if (opt.id !== "damage") forceCloseCardModal();
         },
@@ -228,6 +236,7 @@ function renderModalButtons(
       addBtn(
         opt.label,
         () => {
+          snapshotIfFriendshipGain(pub, humanPlayerId, opt.id);
           send({
             type: "PLAY_CARD",
             cardInstanceId: instanceId,
@@ -245,6 +254,9 @@ function renderModalButtons(
     addBtn(
       "Play Card",
       () => {
+        if (def?.effectId && DIRECT_FRIENDSHIP_EFFECT_IDS.has(def.effectId)) {
+          snapshotFriendshipBeforeChoice(pub, humanPlayerId);
+        }
         send({ type: "PLAY_CARD", cardInstanceId: instanceId });
       },
       true

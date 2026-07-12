@@ -69,6 +69,7 @@ export async function handlePresentationUpdate(
 
   if (key === lastHoldKey) {
     if (hold.at === "post_trigger_roll" && ctx.mode !== "tv") {
+      // Outcome not shown yet — allow re-entry instead of stalling forever.
       if (isTriggerRollOutcomePresented(pub)) {
         return ctx.prevHandIds;
       }

@@ -1,6 +1,6 @@
 import type { CardInstance } from "../../shared/types.js";
 
-import { bindHandClickHandlers, cardImg, cardName, getHandCardVisualClass } from "./ws-client.js";
+import { bindHandClickHandlers, cardImg, cardName, getHandCardVisualClass, type HandCardVisualClass } from "./ws-client.js";
 
 
 
@@ -112,7 +112,7 @@ function createHandCardElement(
 
   extraClass = "",
 
-  cardClass: "playable" | "unplayable" = "unplayable"
+  cardClass: HandCardVisualClass = "unplayable"
 
 ): HTMLElement {
 
@@ -144,7 +144,7 @@ async function spawnFlyingCardToSlot(
 
   targetSlot: Element,
 
-  cardClass: "playable" | "unplayable" = "unplayable"
+  cardClass: HandCardVisualClass = "unplayable"
 
 ): Promise<void> {
 
@@ -232,7 +232,7 @@ export async function runDrawAnimations(
 
   onRenderHand: (handToShow: CardInstance[]) => void,
 
-  getCardClass?: (card: CardInstance) => "playable" | "unplayable",
+  getCardClass?: (card: CardInstance) => HandCardVisualClass,
 
   handCtx?: Parameters<typeof bindHandClickHandlers>[2]
 

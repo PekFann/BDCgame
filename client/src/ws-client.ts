@@ -4,7 +4,11 @@ import { isCardModalBlockingPendingActions } from "./card-modal.js";
 import { openDiscussionModal } from "./discussion-modal.js";
 import { BOARD_EVENT_PENDING_KINDS } from "./pending-choice-ui.js";
 import { isGameIntroDismissed } from "./game-start-modal.js";
+import { isFriendshipGainOption, snapshotFriendshipBeforeChoice } from "./friendship-vfx.js";
 import { isInputLocked } from "./input-lock.js";
+import { ENERGY_ICON, FRIENDSHIP_ICON } from "./ui-icons.js";
+
+export { ENERGY_ICON, FRIENDSHIP_ICON } from "./ui-icons.js";
 
 export { isBoardMountedEventPending } from "./pending-choice-ui.js";
 
@@ -27,11 +31,13 @@ const cardEffectById = Object.fromEntries(
   (cardsData as { id: string; effectId?: string }[]).map((c) => [c.id, c.effectId ?? ""])
 );
 
+export type HandCardVisualClass = "playable" | "unplayable" | "actions-spent";
+
 export function getHandCardVisualClass(
   phase: Phase,
   cardId: string,
   pub?: PublicGameState
-): "playable" | "unplayable" | "actions-spent" {
+): HandCardVisualClass {
   const isInstant = cardInstantById[cardId];
   const isCycleAction = (cardsData as { id: string; cycleIcon?: boolean }[]).some(
     (c) => c.id === cardId && c.cycleIcon
@@ -324,9 +330,6 @@ export function getCardDisplayName(cardId: string): string {
   return cardNamesById[cardId] ?? cardId.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export const ENERGY_ICON = "/assets/UI/Energy icon.svg";
-export const FRIENDSHIP_ICON = "/assets/UI/Friendship icon.svg";
-
 const EVENT_BOARD_KINDS = BOARD_EVENT_PENDING_KINDS;
 
 export function shouldRenderEventChoiceOnBoard(
@@ -376,7 +379,12 @@ export function renderBoardEventChoice(
       btn.type = "button";
       btn.className = "btn secondary board-event-btn";
       btn.textContent = opt.label;
-      btn.onclick = () => send!({ type: "RESOLVE_PICK_ONE", optionId: opt.id });
+      btn.onclick = () => {
+        if (isFriendshipGainOption(opt.id)) {
+          snapshotFriendshipBeforeChoice(pub, humanPlayerId!);
+        }
+        send!({ type: "RESOLVE_PICK_ONE", optionId: opt.id });
+      };
       actions.appendChild(btn);
     } else {
       const label = document.createElement("div");

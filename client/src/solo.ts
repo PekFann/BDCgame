@@ -48,6 +48,7 @@ import { refreshTimeTravelModal, resetTimeTravelModal } from "./time-travel-moda
 import { refreshDemonTargetModal, resetDemonTargetModal } from "./demon-target-modal.js";
 import { refreshHandDiscardModal, resetHandDiscardModal } from "./hand-discard-modal.js";
 import { refreshCallForHelpModal, resetCallForHelpModal } from "./call-for-help-modal.js";
+import { refreshCoffeeBreakModal, resetCoffeeBreakModal } from "./coffee-break-modal.js";
 import { playBoardDamageVfx, resetBoardDamageVfx } from "./board-damage-vfx.js";
 import { initFullscreenButton } from "./fullscreen.js";
 import {
@@ -273,6 +274,7 @@ function refreshGameplayModals(
   refreshTimeTravelModal(pub, priv, send);
   refreshHandDiscardModal(pub, priv, send, humanPlayerId);
   refreshCallForHelpModal(pub, send, humanPlayerId);
+  refreshCoffeeBreakModal(pub, send, humanPlayerId);
   refreshDemonTargetModal(pub, priv, send);
   refreshPhaseToast(pub);
 }
@@ -415,6 +417,9 @@ function renderGameUI(): void {
         handCtx,
         send,
         mode: "solo",
+        humanPlayerId,
+        friendshipVfxMode: "solo",
+        getPub: () => client.publicState,
       }).then((ids) => {
         syncPrevHandIdsForPlayer(humanPlayerId, ids);
         const latestPub = client.publicState;
@@ -557,6 +562,7 @@ async function init() {
       resetDemonTargetModal();
       resetHandDiscardModal();
       resetCallForHelpModal();
+      resetCoffeeBreakModal();
       resetBoardDamageVfx();
       resetPhaseToast();
       resetFriendshipVfxTracking();

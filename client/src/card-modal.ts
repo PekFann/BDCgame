@@ -54,9 +54,31 @@ export function canPrayerDealDamage(pub: PublicGameState): boolean {
   return impsAlive || demonTargetable;
 }
 
+export function canHealPossessed(pub: PublicGameState): boolean {
+  if (pub.possessedHp >= pub.possessedMaxHp) return false;
+  if (pub.modifiers.healingBlocked) return false;
+  if (pub.phase === "night" && pub.modifiers.noHealAtNight) return false;
+  return true;
+}
+
+function isHealOption(optionId: string): boolean {
+  return optionId === "heal" || optionId === "heal2";
+}
+
+function appendHealFullNote(buttonsEl: HTMLElement, pub: PublicGameState): void {
+  if (pub.possessedHp < pub.possessedMaxHp) return;
+  const note = document.createElement("p");
+  note.className = "card-modal-hint card-modal-heal-full-note";
+  note.textContent = "Possessed health is full.";
+  buttonsEl.appendChild(note);
+}
+
 function isOptionDisabled(pub: PublicGameState, effectId: string | undefined, optionId: string): boolean {
   if (effectId === "prayer" && optionId === "damage") {
     return !canPrayerDealDamage(pub);
+  }
+  if (isHealOption(optionId)) {
+    return !canHealPossessed(pub);
   }
   return false;
 }
@@ -205,6 +227,7 @@ function renderModalButtons(
     (!pending?.cardInstanceId || pending.cardInstanceId === instanceId);
 
   if (showPending && pending?.options) {
+    let showedHealNote = false;
     for (const opt of pending.options) {
       const disabled = isOptionDisabled(pub, def?.effectId, opt.id);
       addBtn(
@@ -217,6 +240,10 @@ function renderModalButtons(
         true,
         disabled
       );
+      if (!showedHealNote && isHealOption(opt.id) && disabled && pub.possessedHp >= pub.possessedMaxHp) {
+        appendHealFullNote(buttonsEl, pub);
+        showedHealNote = true;
+      }
     }
   } else if (showPending && pending?.targets && pending.targets.length === 1) {
     const t = pending.targets[0];
@@ -231,6 +258,7 @@ function renderModalButtons(
     isPickOneEffect(def?.effectId)
   ) {
     const options = CARD_PICK_ONE_OPTIONS[def!.effectId!];
+    let showedHealNote = false;
     for (const opt of options) {
       const disabled = isOptionDisabled(pub, def?.effectId, opt.id);
       addBtn(
@@ -249,8 +277,13 @@ function renderModalButtons(
         true,
         disabled
       );
+      if (!showedHealNote && isHealOption(opt.id) && disabled && pub.possessedHp >= pub.possessedMaxHp) {
+        appendHealFullNote(buttonsEl, pub);
+        showedHealNote = true;
+      }
     }
   } else if (modalMode === "preview" && instanceId && canPlayCard(priv, instanceId)) {
+    const giftsBlocked = def?.effectId === "gifts" && !canHealPossessed(pub);
     addBtn(
       "Play Card",
       () => {
@@ -259,8 +292,10 @@ function renderModalButtons(
         }
         send({ type: "PLAY_CARD", cardInstanceId: instanceId });
       },
-      true
+      true,
+      giftsBlocked
     );
+    if (giftsBlocked) appendHealFullNote(buttonsEl, pub);
   } else if (modalMode === "preview" && instanceId && priv.hand.some((c) => c.instanceId === instanceId)) {
     const hint = document.createElement("p");
     hint.className = "card-modal-hint";

@@ -1,3 +1,11 @@
+@font-face {
+  font-family: "DK Canoodle";
+  src: url("/font/DK Canoodle.otf") format("opentype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --bg: #080a0f;
   --bg-gradient: radial-gradient(ellipse 80% 60% at 50% 40%, #14101c 0%, #080a0f 70%);
@@ -19,7 +27,7 @@
   --glass-bg-strong: rgba(32, 26, 42, 0.68);
   --glass-blur: 14px;
   --glass-border: rgba(201, 162, 77, 0.14);
-  --font-display: "Cinzel", "Times New Roman", serif;
+  --font-display: "DK Canoodle", "Times New Roman", serif;
   --card-max-h: clamp(100px, 18vh, 160px);
   --hero-card-max-h: clamp(200px, 36vh, 320px);
   --dnc-hero-max-h: var(--hero-card-max-h);
@@ -577,6 +585,7 @@ a:hover {
   flex-wrap: wrap;
   gap: 0.35rem;
   flex-shrink: 0;
+  justify-content: center;
 }
 
 .player-roster-row {
@@ -587,7 +596,7 @@ a:hover {
   border: 1px solid rgba(201, 162, 77, 0.18);
   border-radius: 999px;
   padding: 0.2rem 0.65rem;
-  font-size: 0.7rem;
+  font-size: 0.85rem;
   cursor: pointer;
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
@@ -610,7 +619,7 @@ a:hover {
   gap: 0.65rem;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
-  font-size: 0.75rem;
+  font-size: 0.9rem;
 }
 
 .roster-stat {
@@ -620,8 +629,8 @@ a:hover {
 }
 
 .roster-stat-icon {
-  width: 1rem;
-  height: 1rem;
+  width: 1.2rem;
+  height: 1.2rem;
   object-fit: contain;
   flex-shrink: 0;
 }
@@ -992,7 +1001,7 @@ a:hover {
   width: 140px;
   height: 140px;
   min-height: 140px;
-  margin: 1rem auto;
+  margin: 2rem auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1108,7 +1117,24 @@ a:hover {
 
 .trigger-roll-panel {
   text-align: center;
-  max-width: min(92vw, 420px);
+  max-width: min(92vw, 480px);
+  padding: 1.5rem 1.75rem 1.75rem;
+}
+
+.trigger-roll-panel .card-modal-title {
+  margin-bottom: 0.5rem;
+}
+
+.trigger-roll-panel--event-only {
+  max-width: min(92vw, 380px);
+}
+
+.trigger-roll-panel--event-only .trigger-event-reveal-img {
+  width: min(55vw, 200px);
+}
+
+.trigger-roll-panel--event-only .trigger-roll-outcome-host {
+  margin-top: 0;
 }
 
 .trigger-roll-panel .card-modal-effect {
@@ -1117,6 +1143,49 @@ a:hover {
 
 .trigger-roll-outcome {
   margin: 0.75rem 0 0;
+}
+
+.trigger-roll-detail {
+  margin: 1.25rem 0 0;
+  text-align: center;
+}
+
+.trigger-roll-detail-roll {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.trigger-roll-outcome-host {
+  margin-top: 0.75rem;
+}
+
+.trigger-roll-outcome-host[hidden] {
+  display: none;
+}
+
+.trigger-event-reveal-hint {
+  margin-top: 0.65rem;
+  font-style: italic;
+}
+
+.card-modal-heal-full-note {
+  color: var(--text-muted, #a8a0b8);
+  margin: 0.35rem 0 0.5rem;
+}
+
+.trigger-roll-actions {
+  margin-top: 1.25rem;
+}
+
+.trigger-roll-actions.trigger-event-options {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.trigger-roll-actions.trigger-event-options .trigger-event-option-btn {
+  width: 100%;
 }
 
 .trigger-roll-outcome img {
@@ -2261,6 +2330,7 @@ a:hover {
 .dice-scene--large {
   width: 140px;
   height: 140px;
+  perspective: 800px;
 }
 
 .dice-scene--large .dice-pip {
@@ -2287,6 +2357,37 @@ a:hover {
   width: min(50vw, 220px);
   border-radius: 10px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.trigger-event-reveal-img.is-scaling-in {
+  animation: eventCardScaleIn 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.trigger-event-reveal-img.is-scaling-out,
+.trigger-event-reveal.is-scaling-out {
+  animation: eventCardScaleOut 0.45s ease-in forwards;
+}
+
+@keyframes eventCardScaleIn {
+  from {
+    transform: scale(0.35);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes eventCardScaleOut {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(0.35);
+    opacity: 0;
+  }
 }
 
 .trigger-event-reveal-label {
@@ -2348,6 +2449,67 @@ a:hover {
 
 .call-for-help-pick-card:hover {
   border-color: var(--gold);
+}
+
+.coffee-break-panel {
+  min-width: min(340px, 92vw);
+  max-width: 420px;
+}
+
+.coffee-break-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 1rem 0;
+}
+
+.coffee-break-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.coffee-break-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.coffee-break-row-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coffee-break-row-energy {
+  font-size: 0.85em;
+  opacity: 0.75;
+}
+
+.coffee-break-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.coffee-break-stepper .btn {
+  min-width: 2rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.coffee-break-value {
+  min-width: 1.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
 }
 
 .board-attachment {
@@ -2549,35 +2711,41 @@ button.lighthouse-attachment.is-active:hover {
   z-index: 310;
   display: block;
   object-fit: contain;
+  filter: drop-shadow(0 0 6px rgba(236, 64, 122, 0.9))
+    drop-shadow(0 0 14px rgba(236, 64, 122, 0.55));
 }
 
 .friendship-particle--burst {
   transform: translate(-50%, -50%);
-  animation: friendshipBurst 1.1s ease-out forwards;
+  animation: friendshipBurst 0.55s ease-out forwards;
 }
 
 .friendship-particle--solo {
-  width: 32px;
-  height: 32px;
+  width: 48px;
+  height: 48px;
 }
 
 .friendship-particle--phone {
-  width: 24px;
-  height: 24px;
+  width: 36px;
+  height: 36px;
 }
 
 @keyframes friendshipBurst {
   0% {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.3);
+    transform: translate(-50%, -50%) scale(0.2);
   }
   12% {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1.15);
+    transform: translate(-50%, -50%) scale(0.45);
+  }
+  82% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--burst-x) * 0.85), calc(-50% + var(--burst-y) * 0.85)) scale(0.95);
   }
   100% {
     opacity: 0;
-    transform: translate(calc(-50% + var(--burst-x)), calc(-50% + var(--burst-y))) scale(0.7);
+    transform: translate(calc(-50% + var(--burst-x)), calc(-50% + var(--burst-y))) scale(1);
   }
 }
 

@@ -2,10 +2,18 @@ import type { CardInstance, GameAction, PrivateGameState, PublicGameState } from
 import { getHandInstanceIds, isDrawAnimating, runDrawAnimations } from "./card-animations.js";
 import { runDicePresentation } from "./dice-animation.js";
 import { runManifestAnimation } from "./manifest-animation.js";
+import { showManifestToast } from "./phase-toast.js";
+import {
+  scheduleFriendshipGainVfx,
+  waitForFriendshipVfxComplete,
+  type FriendshipVfxMode,
+} from "./friendship-vfx.js";
 import {
   isTriggerRollOutcomePresented,
   isTriggerRollPresentationRunning,
   runTriggerRollPresentationIfNeeded,
+  runEventRollPresentationIfNeeded,
+  isEventRollOutcomePresented,
 } from "./trigger-roll-modal.js";
 import { getHandCardVisualClass, type HandRenderContext } from "./ws-client.js";
 type SendFn = (action: GameAction) => void;
@@ -28,7 +36,8 @@ function holdKey(pub: PublicGameState): string {
   const phaseTag = `${pub.cycle}-${pub.dncPhaseIndex}`;
   if (h.at === "manifest") return `manifest-${phaseTag}`;
   if (h.at === "post_trigger_roll") return `trigger-${phaseTag}-${h.roll}-${h.outcome}`;
-  if (h.at === "post_draw") return `post_draw-${phaseTag}`;
+  if (h.at === "post_draw") return `post_draw-${phaseTag}-${h.choice}`;
+  if (h.at === "post_event_roll") return `event-roll-${phaseTag}-${h.roll}-${h.effectId}`;
   return "";
 }
 
@@ -52,6 +61,9 @@ export interface PresentationContext {
   handCtx?: HandRenderContext;
   send: SendFn;
   mode: "solo" | "tv" | "play";
+  humanPlayerId?: string;
+  friendshipVfxMode?: FriendshipVfxMode;
+  getPub?: () => PublicGameState | null | undefined;
 }
 
 export async function handlePresentationUpdate(
@@ -73,6 +85,10 @@ export async function handlePresentationUpdate(
       if (isTriggerRollOutcomePresented(pub)) {
         return ctx.prevHandIds;
       }
+    } else if (hold.at === "post_event_roll" && ctx.mode !== "tv") {
+      if (isEventRollOutcomePresented(pub)) {
+        return ctx.prevHandIds;
+      }
     } else {
       await ackPresentationIfHuman(ctx);
       return ctx.prevHandIds;
@@ -86,7 +102,11 @@ export async function handlePresentationUpdate(
       while (isDrawAnimating()) {
         await sleep(50);
       }
-      if (ctx.boardRoot) {
+      if (ctx.mode !== "tv") {
+        showManifestToast(hold.preview);
+        await sleep(2000);
+      }
+      if (ctx.boardRoot && !hold.preview.skipped) {
         await runManifestAnimation(ctx.boardRoot, hold.preview);
       }
       await ackPresentationIfHuman(ctx);
@@ -118,9 +138,43 @@ export async function handlePresentationUpdate(
       return ctx.prevHandIds;
     }
 
+    if (hold.at === "post_event_roll") {
+      try {
+        if (ctx.mode !== "tv") {
+          while (isTriggerRollPresentationRunning()) {
+            await sleep(50);
+          }
+          const presented = await runEventRollPresentationIfNeeded(pub, ctx.send);
+          if (presented || isEventRollOutcomePresented(pub)) {
+            lastHoldKey = key;
+          }
+        }
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.warn("Event roll presentation failed:", err);
+        }
+      }
+      return ctx.prevHandIds;
+    }
+
     if (hold.at === "post_draw") {
       while (isDrawAnimating()) {
         await sleep(50);
+      }
+      if (hold.choice === "friendship") {
+        if (ctx.humanPlayerId && ctx.friendshipVfxMode) {
+          scheduleFriendshipGainVfx(
+            ctx.getPub ?? (() => pub),
+            ctx.humanPlayerId,
+            ctx.friendshipVfxMode
+          );
+          await waitForFriendshipVfxComplete();
+        } else {
+          await sleep(1200);
+        }
+        await ackPresentationIfHuman(ctx);
+        lastHoldKey = key;
+        return ctx.prevHandIds;
       }
       const prevIdsForAnim = new Set(ctx.prevHandIds);
       if (ctx.handRoot && ctx.onRenderHand && ctx.handCtx) {

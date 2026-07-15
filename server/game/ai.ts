@@ -87,10 +87,29 @@ export function getLegalActions(state: GameState, player: PlayerState): GameActi
         cardInstanceIds: [player.hand[0].instanceId],
       });
     }
+    if (state.pendingChoice.kind === "distribute_energy") {
+      actions.push({
+        type: "DISTRIBUTE_ENERGY",
+        distribution: buildEnergyDistribution(state, state.pendingChoice.amount ?? 5, player.id),
+      });
+    }
     if (state.pendingRerollPrompt) return actions;
   }
 
   return actions;
+}
+
+/** Give all energy to the lowest-energy player; acting player wins ties. */
+function buildEnergyDistribution(
+  state: GameState,
+  amount: number,
+  preferPlayerId: string
+): Record<string, number> {
+  let best = state.players.find((p) => p.id === preferPlayerId) ?? state.players[0];
+  for (const p of state.players) {
+    if (p.energy < best.energy) best = p;
+  }
+  return { [best.id]: amount };
 }
 
 function hasPlayableCard(state: GameState, player: PlayerState): boolean {
@@ -117,6 +136,12 @@ export function pickAiAction(state: GameState, player: PlayerState): GameAction 
     }
     if (pending.kind === "discard_cards" && player.hand.length) {
       return { type: "DISCARD_CARDS", cardInstanceIds: [player.hand[0].instanceId] };
+    }
+    if (pending.kind === "distribute_energy") {
+      return {
+        type: "DISTRIBUTE_ENERGY",
+        distribution: buildEnergyDistribution(state, pending.amount ?? 5, player.id),
+      };
     }
   }
 

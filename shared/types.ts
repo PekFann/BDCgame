@@ -139,9 +139,10 @@ export interface PendingCardRollResume {
 }
 
 export type PresentationHold =
-  | { at: "post_draw" }
+  | { at: "post_draw"; choice: DrawChoice }
   | { at: "manifest"; preview: ManifestPreview }
-  | { at: "post_trigger_roll"; roll: number; outcome: TriggerOutcome; eventCardId?: string };
+  | { at: "post_trigger_roll"; roll: number; outcome: TriggerOutcome; eventCardId?: string }
+  | { at: "post_event_roll"; roll: number; effectId: string; playerId: string };
 
 export interface GameModifiers {
   maxHandSize: number;

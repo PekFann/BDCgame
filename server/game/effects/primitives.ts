@@ -67,6 +67,13 @@ export function spendFriendship(player: PlayerState, amount: number): boolean {
   return true;
 }
 
+export function canHealPossessed(state: GameState): boolean {
+  if (state.possessedHp >= state.possessedMaxHp) return false;
+  if (state.modifiers.healingBlocked) return false;
+  if (state.phase === "night" && state.modifiers.noHealAtNight) return false;
+  return true;
+}
+
 export function healPossessed(state: GameState, amount: number, sourcePlayerId?: string, viaAction = false): void {
   if (state.modifiers.healingBlocked) {
     log(state, "Healing is blocked.");
@@ -74,6 +81,10 @@ export function healPossessed(state: GameState, amount: number, sourcePlayerId?:
   }
   if (state.phase === "night" && state.modifiers.noHealAtNight) {
     log(state, "Possessed cannot heal during Night.");
+    return;
+  }
+  if (state.possessedHp >= state.possessedMaxHp) {
+    log(state, "Possessed health is full.");
     return;
   }
   const before = state.possessedHp;

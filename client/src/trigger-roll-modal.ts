@@ -4,6 +4,7 @@ import {
   hasLandedDiceHost,
   runTriggerDiceAnimation,
   runTriggerRollModalPresentation,
+  runEventRollModalPresentation,
   showRollResultWaiting,
 } from "./dice-animation.js";
 import { isGameIntroDismissed } from "./game-start-modal.js";
@@ -18,6 +19,7 @@ let rollSent = false;
 let diceAnimRunning = false;
 let completedDiceAnimKey: string | null = null;
 let outcomePresentedKey = "";
+let eventRollPresentedKey = "";
 
 function ensureTriggerRollModal(): { root: HTMLElement; panel: HTMLElement } {
   if (modalEl && panelEl) return { root: modalEl, panel: panelEl };
@@ -54,6 +56,17 @@ function outcomeKey(pub: PublicGameState): string {
   return `${pub.cycle}-${pub.dncPhaseIndex}-${h.roll}-${h.outcome}-${h.eventCardId ?? ""}`;
 }
 
+function eventRollOutcomeKey(pub: PublicGameState): string {
+  const h = pub.presentationHold;
+  if (h?.at !== "post_event_roll") return "";
+  return `${pub.cycle}-${pub.dncPhaseIndex}-${h.roll}-${h.effectId}`;
+}
+
+export function isEventRollOutcomePresented(pub: PublicGameState): boolean {
+  const key = eventRollOutcomeKey(pub);
+  return key !== "" && key === eventRollPresentedKey;
+}
+
 export function isTriggerRollOutcomePresented(pub: PublicGameState): boolean {
   const key = outcomeKey(pub);
   return key !== "" && key === outcomePresentedKey;
@@ -87,7 +100,8 @@ export function isTriggerRollAwaitingResult(pub: PublicGameState): boolean {
     presentationRunning ||
     diceAnimRunning ||
     !!pub.pendingRerollPrompt ||
-    pub.presentationHold?.at === "post_trigger_roll"
+    pub.presentationHold?.at === "post_trigger_roll" ||
+    pub.presentationHold?.at === "post_event_roll"
   );
 }
 
@@ -139,7 +153,8 @@ async function runDiceAnimIfNeeded(
     if (
       rollSent &&
       !latest.pendingRerollPrompt &&
-      latest.presentationHold?.at !== "post_trigger_roll"
+      latest.presentationHold?.at !== "post_trigger_roll" &&
+      latest.presentationHold?.at !== "post_event_roll"
     ) {
       showRollResultWaiting(panel, roll);
     }
@@ -150,6 +165,7 @@ async function runDiceAnimIfNeeded(
 }
 
 function showPrompt(panel: HTMLElement, send: SendFn): void {
+  panel.classList.remove("trigger-roll-panel--event-only");
   panel.innerHTML = `
     <h3 class="card-modal-title">Triggers &amp; Events</h3>
     <p class="card-modal-effect">Roll the dice to resolve possessed triggers or draw an event card.</p>
@@ -182,12 +198,41 @@ export async function runTriggerRollPresentationIfNeeded(
 
   presentationRunning = true;
   try {
-    const context = rollContext(pub);
-    const animKey = diceAnimKey(pub, hold.roll, context);
-    // Prefer reusing a landed cube even if anim-key context drifted (avoids re-tumble hang).
-    const skipDice = completedDiceAnimKey === animKey || hasLandedDiceHost(panel, hold.roll);
-    await runTriggerRollModalPresentation(panel, pub, hold, { skipDice, send });
+    const skipDice = hasLandedDiceHost(panel, hold.roll);
+    const { handoffToDice } = await runTriggerRollModalPresentation(panel, pub, hold, {
+      skipDice,
+      send,
+    });
     outcomePresentedKey = key;
+    if (!handoffToDice) {
+      forceCloseModal(root, panel);
+    }
+    rollSent = false;
+    completedDiceAnimKey = null;
+  } finally {
+    presentationRunning = false;
+  }
+  return true;
+}
+
+export async function runEventRollPresentationIfNeeded(
+  pub: PublicGameState,
+  send?: SendFn
+): Promise<boolean> {
+  const hold = pub.presentationHold;
+  if (hold?.at !== "post_event_roll" || presentationRunning) return false;
+
+  const key = eventRollOutcomeKey(pub);
+  if (key && key === eventRollPresentedKey) return false;
+
+  const { root, panel } = ensureTriggerRollModal();
+  if (root.hidden) openAnimatedModal(root, panel);
+
+  presentationRunning = true;
+  try {
+    const skipDice = hasLandedDiceHost(panel, hold.roll);
+    await runEventRollModalPresentation(panel, hold, { skipDice, send });
+    eventRollPresentedKey = key;
     forceCloseModal(root, panel);
     rollSent = false;
   } finally {
@@ -207,6 +252,7 @@ export function refreshTriggerRollModal(
   if (pub.phase !== "triggers") {
     resetTriggerRollClientFlags();
     outcomePresentedKey = "";
+    eventRollPresentedKey = "";
     if (!root.hidden && !presentationRunning && !diceAnimRunning) {
       closeAnimatedModal(root, panel, () => {});
     }
@@ -214,6 +260,7 @@ export function refreshTriggerRollModal(
   }
 
   if (pub.presentationHold?.at === "post_trigger_roll") {
+    if (isTriggerRollOutcomePresented(pub)) return;
     if (root.hidden) openAnimatedModal(root, panel);
     // Retry until Continue/outcome is shown (guards against silent stalls on Resolving…).
     if (
@@ -221,6 +268,15 @@ export function refreshTriggerRollModal(
       !isTriggerRollOutcomePresented(pub)
     ) {
       void runTriggerRollPresentationIfNeeded(pub, send);
+    }
+    return;
+  }
+
+  if (pub.presentationHold?.at === "post_event_roll") {
+    if (isEventRollOutcomePresented(pub)) return;
+    if (root.hidden) openAnimatedModal(root, panel);
+    if (!isTriggerRollPresentationRunning() && !isEventRollOutcomePresented(pub)) {
+      void runEventRollPresentationIfNeeded(pub, send);
     }
     return;
   }
@@ -284,6 +340,8 @@ export function resetTriggerRollClientFlags(): void {
 export function resetTriggerRollModal(): void {
   resetTriggerRollClientFlags();
   outcomePresentedKey = "";
+  eventRollPresentedKey = "";
+  panelEl?.classList.remove("trigger-roll-panel--event-only");
   if (modalEl && panelEl && !modalEl.hidden) {
     forceCloseModal(modalEl, panelEl);
   }

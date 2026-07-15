@@ -1,5 +1,6 @@
 import type { CardInstance } from "../../shared/types.js";
 
+import { playCardDrawSound } from "./audio.js";
 import { bindHandClickHandlers, cardImg, cardName, getHandCardVisualClass, type HandCardVisualClass } from "./ws-client.js";
 
 
@@ -273,6 +274,8 @@ export async function runDrawAnimations(
     for (let i = 0; i < newCards.length; i++) {
 
       const card = newCards[i];
+
+      playCardDrawSound();
 
       const placeholder = createPlaceholderSlot();
 

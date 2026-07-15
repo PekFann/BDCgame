@@ -2,6 +2,7 @@ import { DNC, getCard } from "../../shared/cards.js";
 import type { GameState, PendingRerollPrompt, PendingCardRollResume, TriggerOutcome } from "../../shared/types.js";
 import { resumeCardRollEffect } from "./card-roll-resume.js";
 import { discardFromHand, peekEventCardId, removeFromHandToDiscard } from "./effects/primitives.js";
+import { isEventRollEffect } from "./effects/triggers.js";
 import { getPlayer } from "./rules.js";
 import { log, rollD6 } from "./util.js";
 
@@ -47,6 +48,16 @@ function finalizeDiceRoll(state: GameState): void {
   if (state.pendingCardRollResume) {
     const resume = state.pendingCardRollResume;
     state.pendingCardRollResume = null;
+    const roller = state.diceRollerId ? getPlayer(state, state.diceRollerId) : null;
+    if (roller?.isHuman && isEventRollEffect(resume.effectId) && state.lastDiceRoll !== null) {
+      state.presentationHold = {
+        at: "post_event_roll",
+        roll: state.lastDiceRoll,
+        effectId: resume.effectId,
+        playerId: resume.playerId,
+      };
+      return;
+    }
     resumeCardRollEffect(state, resume);
     return;
   }

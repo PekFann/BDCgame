@@ -1,4 +1,4 @@
-import type { PublicGameState } from "../../shared/types.js";
+import type { ManifestPreview, PublicGameState } from "../../shared/types.js";
 
 let toastEl: HTMLElement | null = null;
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
@@ -40,6 +40,18 @@ function showToast(title: string, detail: string): void {
       el.classList.remove("phase-toast-out");
     }, 280);
   }, 2000);
+}
+
+export function showManifestToast(preview: ManifestPreview): void {
+  if (preview.skipped) {
+    showToast("Demons Manifest", "Demons do not manifest this cycle.");
+    return;
+  }
+  const n = preview.totalDamage;
+  showToast(
+    "Demons Manifest!",
+    `Demon deals ${n} damage to the possessed.`
+  );
 }
 
 export function refreshPhaseToast(pub: PublicGameState): void {

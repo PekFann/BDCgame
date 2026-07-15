@@ -24,6 +24,7 @@ import { refreshTimeTravelModal } from "./time-travel-modal.js";
 import { refreshDemonTargetModal } from "./demon-target-modal.js";
 import { refreshHandDiscardModal } from "./hand-discard-modal.js";
 import { refreshCallForHelpModal } from "./call-for-help-modal.js";
+import { refreshCoffeeBreakModal } from "./coffee-break-modal.js";
 import { initFullscreenButton } from "./fullscreen.js";
 import {
   ensureFriendshipBaseline,
@@ -230,6 +231,7 @@ export function initPlayerApp(config: PlayerAppConfig): GameClient {
       refreshTimeTravelModal(pub, priv, send);
       refreshHandDiscardModal(pub, priv, send, human.id);
       refreshCallForHelpModal(pub, send, human.id);
+      refreshCoffeeBreakModal(pub, send, human.id);
       refreshDemonTargetModal(pub, priv, send);
 
       if (pub.presentationHold) {
@@ -242,6 +244,9 @@ export function initPlayerApp(config: PlayerAppConfig): GameClient {
           handCtx,
           send,
           mode: "play",
+          humanPlayerId: human.id,
+          friendshipVfxMode: "phone",
+          getPub: () => client.publicState,
         });
       }
     } finally {
@@ -292,6 +297,7 @@ export function initPlayerApp(config: PlayerAppConfig): GameClient {
       refreshTimeTravelModal(pub, priv, send);
       refreshHandDiscardModal(pub, priv, send, human.id);
       refreshCallForHelpModal(pub, send, human.id);
+      refreshCoffeeBreakModal(pub, send, human.id);
       refreshDemonTargetModal(pub, priv, send);
     });
   });

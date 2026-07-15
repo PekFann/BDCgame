@@ -53,6 +53,7 @@ import {
   declineReroll,
   hasPendingReroll,
 } from "./dice-reroll.js";
+import { resumeCardRollEffect } from "./card-roll-resume.js";
 
 export function createEmptyGame(mode: "solo" | "multi"): GameState {
   return {
@@ -470,8 +471,8 @@ function applyPlayerDrawChoice(state: GameState, playerId: string, choice: DrawC
   }
   player.drawChoice = choice;
 
-  if (choice === "card_and_energy" && player.isHuman) {
-    state.presentationHold = { at: "post_draw" };
+  if (player.isHuman) {
+    state.presentationHold = { at: "post_draw", choice };
   }
 }
 
@@ -535,6 +536,16 @@ function handleAckPresentation(state: GameState, playerId: string): void {
     } else if (!state.pendingPostTriggerAdvance) {
       advanceAfterTriggerRoll(state);
     }
+    return;
+  }
+
+  if (hold.at === "post_event_roll") {
+    resumeCardRollEffect(state, {
+      effectId: hold.effectId,
+      playerId: hold.playerId,
+    });
+    state.presentationHold = null;
+    maybeAdvanceAfterDeferredEventRoll(state);
     return;
   }
 

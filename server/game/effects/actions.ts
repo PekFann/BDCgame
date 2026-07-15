@@ -9,6 +9,7 @@ import {
   gainEnergy,
   gainFriendship,
   healPossessed,
+  canHealPossessed,
   payCardCosts,
   canPlayCardInCurrentPhase,
   removeFromHandToDiscard,
@@ -40,6 +41,10 @@ export function startPlayCard(ctx: PlayContext): PendingChoice | null {
 
   if (!canPlayCardInCurrentPhase(state, def)) {
     throw new Error("Cannot play this card in the current phase");
+  }
+
+  if (def.effectId === "gifts" && !state.modifiers.caringGiftsBlocked && !canHealPossessed(state)) {
+    throw new Error("Possessed health is full");
   }
 
   if (!payCardCosts(state, player, instance.cardId)) {
@@ -306,9 +311,15 @@ export function resolvePickOne(state: GameState, playerId: string, optionId: str
       };
   }
   if (optionId === "friendship") gainFriendship(player, 1);
-  if (optionId === "heal") healPossessed(state, 1, playerId, true);
+  if (optionId === "heal") {
+    if (!canHealPossessed(state)) throw new Error("Possessed health is full");
+    healPossessed(state, 1, playerId, true);
+  }
   if (optionId === "friendship2") gainFriendship(player, 2);
-  if (optionId === "heal2") healPossessed(state, 2, playerId, true);
+  if (optionId === "heal2") {
+    if (!canHealPossessed(state)) throw new Error("Possessed health is full");
+    healPossessed(state, 2, playerId, true);
+  }
 }
 
 export function resolveDiscardEffect(state: GameState, playerId: string, ids: string[], effectId?: string): void {
@@ -364,7 +375,26 @@ export function resolveTarget(state: GameState, playerId: string, targetId: stri
 }
 
 export function resolveEnergyDistribution(state: GameState, distribution: Record<string, number>): void {
+  const pending = state.pendingChoice;
+  if (!pending || pending.kind !== "distribute_energy") {
+    throw new Error("No energy distribution pending");
+  }
+  const expected = pending.amount ?? 5;
+  const playerIds = new Set(state.players.map((p) => p.id));
+  let total = 0;
   for (const [pid, amt] of Object.entries(distribution)) {
-    gainEnergy(getPlayer(state, pid), amt, state);
+    if (!playerIds.has(pid)) {
+      throw new Error("Invalid player in energy distribution");
+    }
+    if (!Number.isInteger(amt) || amt < 0) {
+      throw new Error("Invalid energy amount");
+    }
+    total += amt;
+  }
+  if (total !== expected) {
+    throw new Error(`Must distribute exactly ${expected} energy`);
+  }
+  for (const [pid, amt] of Object.entries(distribution)) {
+    if (amt > 0) gainEnergy(getPlayer(state, pid), amt, state);
   }
 }

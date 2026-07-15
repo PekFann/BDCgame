@@ -4,8 +4,8 @@ import { FRIENDSHIP_ICON } from "./ui-icons.js";
 
 export type FriendshipVfxMode = "solo" | "phone";
 
-const DURATION_MS = 1100;
-const BURST_STAGGER_MS = 120;
+const DURATION_MS = 550;
+const BURST_STAGGER_MS = 60;
 const FRIENDSHIP_ICON_URL = encodeURI(FRIENDSHIP_ICON);
 
 /** Preload friendship icon so burst particles render immediately. */
@@ -106,8 +106,10 @@ export function checkFriendshipGainVfx(
   prevFriendship = human.friendship;
 }
 
-export function runFriendshipGainVfxAfterDrawChoice(amount: number, mode: FriendshipVfxMode): void {
-  markPendingDrawFriendshipGain(amount);
+export function waitForFriendshipVfxComplete(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, DURATION_MS + BURST_STAGGER_MS + 100);
+  });
 }
 
 export function scheduleFriendshipGainVfx(
@@ -178,7 +180,7 @@ export function runFriendshipGainVfx(amount: number, mode: FriendshipVfxMode): v
   const particles: HTMLElement[] = [];
   const originX = rect.left + rect.width / 2;
   const originY = rect.top + rect.height / 2;
-  const particleSize = mode === "solo" ? 32 : 24;
+  const particleSize = mode === "solo" ? 48 : 36;
 
   if (mode === "solo" && element?.classList.contains("possessed")) {
     pulsePossessed(element);
@@ -198,7 +200,7 @@ export function runFriendshipGainVfx(amount: number, mode: FriendshipVfxMode): v
     img.style.left = `${originX}px`;
     img.style.top = `${originY}px`;
     const angle = Math.random() * Math.PI * 2;
-    const distance = 60 + Math.random() * 80;
+    const distance = 120 + Math.random() * 160;
     img.style.setProperty("--burst-x", `${Math.cos(angle) * distance}px`);
     img.style.setProperty("--burst-y", `${Math.sin(angle) * distance}px`);
     img.style.animationDelay = `${Math.random() * BURST_STAGGER_MS}ms`;

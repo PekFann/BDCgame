@@ -2,6 +2,7 @@ import type { GameAction, PublicGameState } from "../../shared/types.js";
 import { cardImg, cardName } from "./ws-client.js";
 import { forceCloseCardModal, isCardModalOpen } from "./card-modal.js";
 import { closeAnimatedModal, forceCloseModal, openAnimatedModal } from "./modal-animations.js";
+import { humanControlsPending } from "./pending-choice-ui.js";
 
 type SendFn = (action: GameAction) => void;
 
@@ -42,7 +43,7 @@ export function refreshCallForHelpModal(
   const pending = pub.pendingChoice;
   const canPick =
     pending?.kind === "pick_action_discard" &&
-    pending.playerId === humanPlayerId &&
+    humanControlsPending(pub, humanPlayerId) &&
     (pending.options?.length ?? 0) > 0;
 
   if (!canPick) {
@@ -54,9 +55,11 @@ export function refreshCallForHelpModal(
 
   const title = panel.querySelector(".call-for-help-title") as HTMLElement;
   const grid = panel.querySelector(".call-for-help-grid") as HTMLElement;
+  const owner = pub.players.find((p) => p.id === pending!.playerId);
+  const ownerLabel = owner && !owner.isHuman ? `${owner.name} — ` : "";
   title.textContent = pending!.cardId
-    ? `${cardName(pending!.cardId)} — pick from discard`
-    : "Call for Help — pick from discard";
+    ? `${ownerLabel}${cardName(pending!.cardId)} — pick from discard`
+    : `${ownerLabel}Call for Help — pick from discard`;
 
   const discard = pub.actionDiscard ?? [];
   grid.innerHTML = "";

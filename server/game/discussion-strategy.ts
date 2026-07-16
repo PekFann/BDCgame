@@ -1,9 +1,15 @@
-import type { DiscussionSuggestion, GameState, PlayerState } from "../../shared/types.js";
+import type { GameState, PlayerState } from "../../shared/types.js";
 import { getCard } from "../../shared/cards.js";
 import { canPlayCard, canPlayCardInCurrentPhase } from "./effects/primitives.js";
 import { getPossessedRequirement, meetsFriendshipRequirement } from "./rules.js";
 
-export type DiscussionCategory = DiscussionSuggestion["category"];
+export type DiscussionCategory =
+  | "heal"
+  | "damage"
+  | "friendship"
+  | "reveal"
+  | "energy"
+  | "utility";
 
 export interface CardSuggestionScore {
   score: number;
@@ -158,41 +164,4 @@ export function pickSuggestedCard(state: GameState, player: PlayerState): string
   }
 
   return bestId;
-}
-
-export function getDiscussionSuggestions(state: GameState): DiscussionSuggestion[] {
-  if (state.phase !== "day" && state.phase !== "night") return [];
-
-  const suggestions: DiscussionSuggestion[] = [];
-
-  for (const player of state.players) {
-    if (player.isHuman) continue;
-    if (player.usedPhaseAction) continue;
-
-    const hand = player.hand.filter((c) => !state.declinedAiPlayIds.has(c.instanceId));
-    let best: DiscussionSuggestion | null = null;
-
-    for (const card of hand) {
-      const scored = scoreCardSuggestion(state, player, card.cardId);
-      if (!scored) continue;
-      const def = getCard(card.cardId);
-      const entry: DiscussionSuggestion = {
-        playerId: player.id,
-        playerName: player.name,
-        cardInstanceId: card.instanceId,
-        cardId: card.cardId,
-        score: scored.score,
-        rationale: scored.rationale,
-        category: scored.category,
-        energyCost: def.energyCost ?? 0,
-        friendshipCost: def.friendshipCost ?? 0,
-      };
-      if (!best || entry.score > best.score) best = entry;
-    }
-
-    if (best) suggestions.push(best);
-  }
-
-  suggestions.sort((a, b) => b.score - a.score);
-  return suggestions;
 }

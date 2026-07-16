@@ -1,8 +1,7 @@
 import type { GameAction, PrivateGameState, PublicGameState, CardInstance, Phase } from "../../shared/types.js";
 import cardsData from "../../data/cards.json";
 import { isCardModalBlockingPendingActions } from "./card-modal.js";
-import { openDiscussionModal } from "./discussion-modal.js";
-import { BOARD_EVENT_PENDING_KINDS } from "./pending-choice-ui.js";
+import { BOARD_EVENT_PENDING_KINDS, humanControlsPending } from "./pending-choice-ui.js";
 import { isGameIntroDismissed } from "./game-start-modal.js";
 import { isFriendshipGainOption, snapshotFriendshipBeforeChoice } from "./friendship-vfx.js";
 import { isInputLocked } from "./input-lock.js";
@@ -729,6 +728,22 @@ export function bindHandClickHandlers(
   });
 }
 
+function handCardPlayableClass(ctx: HandRenderContext, card: CardInstance): HandCardVisualClass {
+  const base = getHandCardVisualClass(ctx.phase, card.cardId, ctx.pub);
+  if (base === "actions-spent" || base === "unplayable") return base;
+  const legal = ctx.priv.legalActions ?? [];
+  const isOwn = ctx.viewingPlayerId === ctx.humanPlayerId;
+  const playable = isOwn
+    ? legal.some((a) => a.type === "PLAY_CARD" && a.cardInstanceId === card.instanceId)
+    : legal.some(
+        (a) =>
+          a.type === "PLAY_TEAM_CARD" &&
+          a.ownerPlayerId === ctx.viewingPlayerId &&
+          a.cardInstanceId === card.instanceId
+      );
+  return playable ? "playable" : "unplayable";
+}
+
 export function renderHand(
   root: HTMLElement,
   hand: CardInstance[],
@@ -736,7 +751,7 @@ export function renderHand(
 ): void {
   root.innerHTML = hand
     .map((c) => {
-      const cls = ctx ? getHandCardVisualClass(ctx.phase, c.cardId, ctx.pub) : "";
+      const cls = ctx ? handCardPlayableClass(ctx, c) : "";
       return `<div class="hand-card ${cls}" data-id="${c.instanceId}"><img src="${cardImg(c.cardId)}" alt="${cardName(c.cardId)}" /></div>`;
     })
     .join("");
@@ -824,33 +839,6 @@ export function renderPossessedPanelActions(
   }
 
   if (stack.childElementCount > 0) root.appendChild(stack);
-}
-
-export function renderDiscussionButton(
-  container: HTMLElement,
-  pub: PublicGameState,
-  priv: PrivateGameState | undefined,
-  send: (a: GameAction) => void
-): void {
-  container.innerHTML = "";
-  if (!priv || pub.phase === "game_over") return;
-  if ((pub.phase !== "day" && pub.phase !== "night") || !isGameIntroDismissed()) return;
-
-  const count = priv.discussionSuggestions.length;
-  const label = count > 0 ? `Discuss (${count})` : "Discuss";
-  const title =
-    count > 0
-      ? `Team discussion — ${count} teammate suggestion${count === 1 ? "" : "s"}`
-      : "No teammate plays to discuss right now";
-
-  const btn = createCircleButton(
-    label,
-    title,
-    () => openDiscussionModal(pub, priv, send),
-    "btn",
-    count === 0
-  );
-  container.appendChild(btn);
 }
 
 export function renderRestVoteBar(
@@ -958,18 +946,11 @@ export function renderPhaseActions(
     addBtn("Roll Dice", { type: "ROLL_DICE" });
   }
 
-  if (circular && (pub.phase === "day" || pub.phase === "night") && isGameIntroDismissed()) {
-    container.appendChild(
-      createCircleButton(
-        "Discuss",
-        "Discussion — suggest a card to play",
-        () => openDiscussionModal(pub, priv, send),
-        "btn"
-      )
-    );
-  }
+  const controlsPending =
+    !humanPlayerId || humanControlsPending(pub, humanPlayerId);
 
   if (
+    controlsPending &&
     pub.pendingChoice?.options &&
     !isCardModalBlockingPendingActions(pub) &&
     !eventChoiceOnBoard
@@ -978,7 +959,11 @@ export function renderPhaseActions(
       addBtn(opt.label, { type: "RESOLVE_PICK_ONE", optionId: opt.id });
     }
   }
-  if (pub.pendingChoice?.targets && !isCardModalBlockingPendingActions(pub)) {
+  if (
+    controlsPending &&
+    pub.pendingChoice?.targets &&
+    !isCardModalBlockingPendingActions(pub)
+  ) {
     const targets = pub.pendingChoice.targets;
     if (targets.length === 1) {
       addBtn(`Target demon`, { type: "SELECT_TARGET", targetId: targets[0] });

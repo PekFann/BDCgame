@@ -3,8 +3,8 @@ import cardsData from "../../data/cards.json";
 import { CARD_PICK_ONE_OPTIONS, isPickOneEffect } from "./card-play-options.js";
 import { DIRECT_FRIENDSHIP_EFFECT_IDS, isFriendshipGainOption, snapshotFriendshipBeforeChoice } from "./friendship-vfx.js";
 import { closeAnimatedModal, forceCloseModal, openAnimatedModal } from "./modal-animations.js";
-import { isBoardMountedEventPending } from "./pending-choice-ui.js";
-import { cardImg, cardName } from "./ws-client.js";
+import { humanControlsPending, isBoardMountedEventPending } from "./pending-choice-ui.js";
+import { cardImg, cardName, getTeamHand } from "./ws-client.js";
 import { isInputLocked } from "./input-lock.js";
 
 type SendFn = (action: GameAction) => void;
@@ -31,6 +31,8 @@ export interface CardModalContext {
   priv: PrivateGameState;
   send: SendFn;
   humanPlayerId: string;
+  /** Card owner; defaults to human when omitted. */
+  ownerPlayerId?: string;
 }
 
 const cardDefs = Object.fromEntries((cardsData as CardDef[]).map((c) => [c.id, c]));
@@ -42,6 +44,7 @@ let openInstanceId: string | null = null;
 let openCardId: string | null = null;
 let resolvingCardId: string | null = null;
 let humanPlayerId = "";
+let openOwnerPlayerId = "";
 let isClosing = false;
 
 function getPanel(): HTMLElement {
@@ -119,6 +122,7 @@ function resetModalState(): void {
   openInstanceId = null;
   openCardId = null;
   resolvingCardId = null;
+  openOwnerPlayerId = "";
   isClosing = false;
 }
 
@@ -158,15 +162,47 @@ export function getOpenCardInstanceId(): string | null {
   return openInstanceId;
 }
 
-function canPlayCard(priv: PrivateGameState, instanceId: string): boolean {
+function canPlayOwnCard(priv: PrivateGameState, instanceId: string): boolean {
   return priv.legalActions.some(
     (a) => a.type === "PLAY_CARD" && a.cardInstanceId === instanceId
   );
 }
 
-function pendingBelongsToHuman(pub: PublicGameState): boolean {
-  const pending = pub.pendingChoice;
-  return !!pending && pending.playerId === humanPlayerId;
+function canPlayTeamCard(
+  priv: PrivateGameState,
+  ownerPlayerId: string,
+  instanceId: string
+): boolean {
+  return priv.legalActions.some(
+    (a) =>
+      a.type === "PLAY_TEAM_CARD" &&
+      a.ownerPlayerId === ownerPlayerId &&
+      a.cardInstanceId === instanceId
+  );
+}
+
+function canPlayOpenCard(priv: PrivateGameState, instanceId: string): boolean {
+  if (openOwnerPlayerId === humanPlayerId) return canPlayOwnCard(priv, instanceId);
+  return canPlayTeamCard(priv, openOwnerPlayerId, instanceId);
+}
+
+function findOpenCard(priv: PrivateGameState): CardInstance | undefined {
+  if (!openInstanceId) return undefined;
+  return getTeamHand(priv, openOwnerPlayerId || humanPlayerId).find(
+    (c) => c.instanceId === openInstanceId
+  );
+}
+
+function playCardAction(instanceId: string, pickOptionId?: string): GameAction {
+  if (openOwnerPlayerId !== humanPlayerId) {
+    return {
+      type: "PLAY_TEAM_CARD",
+      ownerPlayerId: openOwnerPlayerId,
+      cardInstanceId: instanceId,
+      pickOptionId,
+    };
+  }
+  return { type: "PLAY_CARD", cardInstanceId: instanceId, pickOptionId };
 }
 
 function renderCardContent(el: HTMLElement, cardId: string): void {
@@ -222,7 +258,7 @@ function renderModalButtons(
   const pending = pub.pendingChoice;
   const showPending =
     modalMode === "resolve" &&
-    pendingBelongsToHuman(pub) &&
+    humanControlsPending(pub, humanPlayerId) &&
     !isBoardMountedEventPending(pub, humanPlayerId) &&
     (!pending?.cardInstanceId || pending.cardInstanceId === instanceId);
 
@@ -254,7 +290,7 @@ function renderModalButtons(
   } else if (
     modalMode === "preview" &&
     instanceId &&
-    canPlayCard(priv, instanceId) &&
+    canPlayOpenCard(priv, instanceId) &&
     isPickOneEffect(def?.effectId)
   ) {
     const options = CARD_PICK_ONE_OPTIONS[def!.effectId!];
@@ -265,11 +301,7 @@ function renderModalButtons(
         opt.label,
         () => {
           snapshotIfFriendshipGain(pub, humanPlayerId, opt.id);
-          send({
-            type: "PLAY_CARD",
-            cardInstanceId: instanceId,
-            pickOptionId: opt.id,
-          });
+          send(playCardAction(instanceId, opt.id));
           if (opt.id === "draw") {
             forceCloseCardModal();
           }
@@ -282,7 +314,7 @@ function renderModalButtons(
         showedHealNote = true;
       }
     }
-  } else if (modalMode === "preview" && instanceId && canPlayCard(priv, instanceId)) {
+  } else if (modalMode === "preview" && instanceId && canPlayOpenCard(priv, instanceId)) {
     const giftsBlocked = def?.effectId === "gifts" && !canHealPossessed(pub);
     addBtn(
       "Play Card",
@@ -290,16 +322,16 @@ function renderModalButtons(
         if (def?.effectId && DIRECT_FRIENDSHIP_EFFECT_IDS.has(def.effectId)) {
           snapshotFriendshipBeforeChoice(pub, humanPlayerId);
         }
-        send({ type: "PLAY_CARD", cardInstanceId: instanceId });
+        send(playCardAction(instanceId));
       },
       true,
       giftsBlocked
     );
     if (giftsBlocked) appendHealFullNote(buttonsEl, pub);
-  } else if (modalMode === "preview" && instanceId && priv.hand.some((c) => c.instanceId === instanceId)) {
+  } else if (modalMode === "preview" && instanceId && findOpenCard(priv)) {
     const hint = document.createElement("p");
     hint.className = "card-modal-hint";
-    if (pub.pendingChoice && pendingBelongsToHuman(pub) && !canPlayCard(priv, instanceId)) {
+    if (pub.pendingChoice && humanControlsPending(pub, humanPlayerId) && !canPlayOpenCard(priv, instanceId)) {
       hint.textContent = isBoardMountedEventPending(pub, humanPlayerId)
         ? "Resolve the event choice on the board first."
         : "Resolve your pending choice first.";
@@ -331,6 +363,7 @@ function renderModal(ctx: CardModalContext, cardId: string, instanceId: string |
 export function openCardModal(card: CardInstance, ctx: CardModalContext): void {
   if (isInputLocked()) return;
   humanPlayerId = ctx.humanPlayerId;
+  openOwnerPlayerId = ctx.ownerPlayerId ?? ctx.humanPlayerId;
   modalMode = "preview";
   openInstanceId = card.instanceId;
   openCardId = card.cardId;
@@ -343,6 +376,7 @@ export function refreshCardModalIfOpen(ctx: CardModalContext): void {
   if (!isCardModalOpen() || isClosing) return;
 
   humanPlayerId = ctx.humanPlayerId;
+  if (ctx.ownerPlayerId) openOwnerPlayerId = ctx.ownerPlayerId;
   const { pub, priv } = ctx;
 
   if (!openInstanceId) {
@@ -350,24 +384,27 @@ export function refreshCardModalIfOpen(ctx: CardModalContext): void {
     return;
   }
 
-  const card = priv.hand.find((c) => c.instanceId === openInstanceId);
-  if (!card) {
+  const pending = pub.pendingChoice;
+  const card = findOpenCard(priv);
+  // After play, the card leaves the hand but resolve mode still needs the open card id.
+  const cardId = card?.cardId ?? openCardId ?? resolvingCardId;
+  if (!cardId) {
     forceCloseCardModal();
     return;
   }
 
-  openCardId = card.cardId;
+  openCardId = cardId;
 
-  const pending = pub.pendingChoice;
   const pendingForOpenCard =
     !!pending &&
-    pendingBelongsToHuman(pub) &&
+    humanControlsPending(pub, humanPlayerId) &&
     pending.cardInstanceId === openInstanceId;
 
   if (modalMode === "preview" && pendingForOpenCard) {
     modalMode = "resolve";
-    resolvingCardId = card.cardId;
-    renderModal(ctx, card.cardId, card.instanceId);
+    resolvingCardId = cardId;
+    if (pending?.playerId) openOwnerPlayerId = pending.playerId;
+    renderModal(ctx, cardId, openInstanceId);
     return;
   }
 
@@ -376,13 +413,17 @@ export function refreshCardModalIfOpen(ctx: CardModalContext): void {
       forceCloseCardModal();
       return;
     }
-    if (!pendingBelongsToHuman(pub)) {
+    if (!humanControlsPending(pub, humanPlayerId)) {
       forceCloseCardModal();
       return;
     }
     if (pending.cardInstanceId && pending.cardInstanceId !== openInstanceId) {
       modalMode = "preview";
       resolvingCardId = null;
+      if (!card) {
+        forceCloseCardModal();
+        return;
+      }
       renderModal(ctx, card.cardId, card.instanceId);
       return;
     }
@@ -390,5 +431,9 @@ export function refreshCardModalIfOpen(ctx: CardModalContext): void {
     return;
   }
 
+  if (!card) {
+    forceCloseCardModal();
+    return;
+  }
   renderModal(ctx, card.cardId, card.instanceId);
 }

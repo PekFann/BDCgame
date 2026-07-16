@@ -27,7 +27,6 @@ import {
 import {
   applyManifest,
   applyPossessedTrigger,
-  canPlayCard,
   checkGameOver,
   computeManifestPreview,
   drawEventCard,
@@ -38,7 +37,7 @@ import {
 import { resolveEventPickOne } from "./effects/triggers.js";
 import { defaultModifiers, getPossessedRequirement, meetsFriendshipRequirement, resetCycleModifiers, canVoteRest, restEligiblePlayers } from "./rules.js";
 import { log, makeInstance, shuffle } from "./util.js";
-import { getLegalActions, pickAiDrawChoice, runAiTurns, getDiscussionSuggestions } from "./ai.js";
+import { canPlayTeamCard, getLegalActions, pendingControllerId, pickAiDrawChoice, runAiTurns } from "./ai.js";
 import {
   advanceDncPhase,
   enterDncPhase,
@@ -287,16 +286,25 @@ function applyActionInternal(state: GameState, playerId: string, action: GameAct
           cardInstanceId: action.cardInstanceId,
           targetId: action.targetId,
         }) ?? null;
+      stampSoloController(state);
       if (action.pickOptionId && state.pendingChoice?.kind === "pick_one") {
         resolvePickOne(state, playerId, action.pickOptionId);
+        stampSoloController(state);
       }
       if (action.pickOptionId && state.pendingChoice?.kind === "pick_one") {
         state.pendingChoice = null;
       }
       break;
     }
-    case "PLAY_DISCUSSED_CARD":
-      handleDiscussedPlay(state, playerId, action.ownerPlayerId, action.cardInstanceId);
+    case "PLAY_TEAM_CARD":
+      handlePlayTeamCard(
+        state,
+        playerId,
+        action.ownerPlayerId,
+        action.cardInstanceId,
+        action.targetId,
+        action.pickOptionId
+      );
       break;
     case "CONFIRM_AI_PLAY":
       handleConfirmAiPlay(state, playerId);
@@ -311,31 +319,45 @@ function applyActionInternal(state: GameState, playerId: string, action: GameAct
       advancePhase(state);
       break;
     case "RESOLVE_PICK_ONE": {
+      const ownerId = assertPendingController(state, playerId);
       const kind = state.pendingChoice?.kind;
       if (kind === "donut_bandit" || kind === "haunted_pizza" || kind === "event_pick_one") {
-        resolveEventPickOne(state, playerId, action.optionId, kind);
+        resolveEventPickOne(state, ownerId, action.optionId, kind);
       } else if (kind === "pick_action_discard") {
-        resolvePickActionDiscard(state, playerId, action.optionId);
+        resolvePickActionDiscard(state, ownerId, action.optionId);
       } else {
-        resolvePickOne(state, playerId, action.optionId);
+        resolvePickOne(state, ownerId, action.optionId);
       }
-      state.pendingChoice = null;
+      // Nested pending may have been set by resolvers before clear — preserve if still set.
+      if (state.pendingChoice?.kind === kind) {
+        state.pendingChoice = null;
+      }
+      stampSoloController(state);
       break;
     }
-    case "SELECT_TARGET":
-      resolveTarget(state, playerId, action.targetId, state.pendingChoice?.amount ?? 1);
+    case "SELECT_TARGET": {
+      const ownerId = assertPendingController(state, playerId);
+      resolveTarget(state, ownerId, action.targetId, state.pendingChoice?.amount ?? 1);
       state.pendingChoice = null;
+      stampSoloController(state);
       break;
-    case "DISCARD_CARDS":
+    }
+    case "DISCARD_CARDS": {
+      const ownerId = assertPendingController(state, playerId);
       if (hasPendingReroll(state) && state.pendingChoice?.kind === "discard_cards") {
-        completeRerollAfterDiscard(state, playerId, action.cardInstanceIds);
+        completeRerollAfterDiscard(state, ownerId, action.cardInstanceIds);
         state.pendingChoice = null;
       } else {
-        resolveDiscardEffect(state, playerId, action.cardInstanceIds);
-        state.pendingChoice = null;
+        resolveDiscardEffect(state, ownerId, action.cardInstanceIds);
+        if (state.pendingChoice?.kind === "discard_cards") {
+          state.pendingChoice = null;
+        }
       }
+      stampSoloController(state);
       break;
+    }
     case "DISTRIBUTE_ENERGY":
+      assertPendingController(state, playerId);
       resolveEnergyDistribution(state, action.distribution);
       state.pendingChoice = null;
       break;
@@ -448,6 +470,7 @@ export function applyAction(state: GameState, playerId: string, action: GameActi
     throw new Error("Resolve reroll offer first");
   }
   applyActionInternal(state, playerId, action);
+  stampSoloController(state);
   processAi(state);
 }
 
@@ -583,36 +606,63 @@ function handleDrawChoice(state: GameState, playerId: string, choice: DrawChoice
   tryAdvanceFromDrawPhase(state);
 }
 
-function handleDiscussedPlay(
+function stampSoloController(state: GameState): void {
+  const pending = state.pendingChoice;
+  if (!pending || state.mode !== "solo") return;
+  const owner = state.players.find((p) => p.id === pending.playerId);
+  if (!owner || owner.isHuman) return;
+  const human = state.players.find((p) => p.isHuman);
+  if (!human) return;
+  pending.controllerPlayerId = human.id;
+}
+
+function assertPendingController(state: GameState, actorId: string): string {
+  const pending = state.pendingChoice;
+  if (!pending) throw new Error("No pending choice");
+  const controllerId = pendingControllerId(state);
+  if (controllerId !== actorId) throw new Error("Not your choice to resolve");
+  return pending.playerId;
+}
+
+function handlePlayTeamCard(
   state: GameState,
   humanPlayerId: string,
   ownerPlayerId: string,
-  cardInstanceId: string
+  cardInstanceId: string,
+  targetId?: string,
+  pickOptionId?: string
 ): void {
   const human = state.players.find((p) => p.id === humanPlayerId);
-  if (!human?.isHuman) throw new Error("Only human can play from discussion");
+  if (!human?.isHuman) throw new Error("Only human can play teammate cards");
+  if (state.mode !== "solo") throw new Error("Team card play is solo-only");
   if (state.phase !== "day" && state.phase !== "night") {
     throw new Error("Cannot play cards during this phase");
   }
-
   if (state.pendingChoice) throw new Error("Resolve pending choice first");
+  if (state.presentationHold) throw new Error("Finish presentation first");
+
   const owner = state.players.find((p) => p.id === ownerPlayerId);
   if (!owner) throw new Error("Player not found");
-  const instance = owner.hand.find((c) => c.instanceId === cardInstanceId);
-  if (!instance) throw new Error("Card not in hand");
-
-  const suggestions = getDiscussionSuggestions(state);
-  const allowed = suggestions.some(
-    (s) => s.playerId === ownerPlayerId && s.cardInstanceId === cardInstanceId
-  );
-  if (!allowed) throw new Error("Card is not a valid discussion suggestion");
+  if (!canPlayTeamCard(state, owner, cardInstanceId)) {
+    throw new Error("Cannot play that teammate card right now");
+  }
 
   state.pendingChoice =
     startPlayCard({
       state,
       playerId: ownerPlayerId,
       cardInstanceId,
+      targetId,
     }) ?? null;
+  stampSoloController(state);
+
+  if (pickOptionId && state.pendingChoice?.kind === "pick_one") {
+    resolvePickOne(state, ownerPlayerId, pickOptionId);
+    stampSoloController(state);
+  }
+  if (pickOptionId && state.pendingChoice?.kind === "pick_one") {
+    state.pendingChoice = null;
+  }
 }
 
 function handleConfirmAiPlay(state: GameState, playerId: string): void {
@@ -628,6 +678,7 @@ function handleConfirmAiPlay(state: GameState, playerId: string): void {
       playerId: pending.playerId,
       cardInstanceId: pending.cardInstanceId,
     }) ?? null;
+  stampSoloController(state);
 }
 
 function handleSkipAiPlay(state: GameState, playerId: string): void {
@@ -773,7 +824,6 @@ export function toPrivateState(state: GameState, playerId: string): PrivateGameS
       isHuman: p.isHuman,
       hand: p.hand,
     })),
-    discussionSuggestions: getDiscussionSuggestions(state),
   };
 }
 

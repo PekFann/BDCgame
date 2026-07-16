@@ -2,6 +2,7 @@ import type { GameAction, PublicGameState } from "../../shared/types.js";
 import { cardName } from "./ws-client.js";
 import { forceCloseCardModal, isCardModalOpen } from "./card-modal.js";
 import { closeAnimatedModal, forceCloseModal, openAnimatedModal } from "./modal-animations.js";
+import { humanControlsPending } from "./pending-choice-ui.js";
 
 type SendFn = (action: GameAction) => void;
 
@@ -130,7 +131,7 @@ export function refreshCoffeeBreakModal(
   const { root, panel } = ensureModal();
   const pending = pub.pendingChoice;
   const canDistribute =
-    pending?.kind === "distribute_energy" && pending.playerId === humanPlayerId;
+    pending?.kind === "distribute_energy" && humanControlsPending(pub, humanPlayerId);
 
   if (!canDistribute) {
     if (!root.hidden) {

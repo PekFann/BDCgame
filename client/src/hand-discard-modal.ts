@@ -2,6 +2,7 @@ import type { GameAction, PrivateGameState, PublicGameState } from "../../shared
 import { cardImg, cardName } from "./ws-client.js";
 import { forceCloseCardModal, isCardModalOpen } from "./card-modal.js";
 import { closeAnimatedModal, forceCloseModal, openAnimatedModal } from "./modal-animations.js";
+import { humanControlsPending, pendingOwnerHand } from "./pending-choice-ui.js";
 
 type SendFn = (action: GameAction) => void;
 
@@ -30,9 +31,12 @@ function ensureModal(): { root: HTMLElement; panel: HTMLElement } {
 }
 
 function discardTitle(pub: PublicGameState): string {
-  const cardId = pub.pendingChoice?.cardId;
-  if (cardId) return `${cardName(cardId)} — choose card to discard`;
-  return "Choose card to discard";
+  const pending = pub.pendingChoice;
+  const cardId = pending?.cardId;
+  const owner = pub.players.find((p) => p.id === pending?.playerId);
+  const ownerLabel = owner && !owner.isHuman ? `${owner.name} — ` : "";
+  if (cardId) return `${ownerLabel}${cardName(cardId)} — choose card to discard`;
+  return `${ownerLabel}Choose card to discard`;
 }
 
 function discardHint(pub: PublicGameState): string {
@@ -58,7 +62,7 @@ export function refreshHandDiscardModal(
   const pending = pub.pendingChoice;
   const canDiscard =
     pending?.kind === "discard_cards" &&
-    pending.playerId === humanPlayerId &&
+    humanControlsPending(pub, humanPlayerId) &&
     (priv?.legalActions ?? []).some((a) => a.type === "DISCARD_CARDS");
 
   if (!canDiscard || !priv) {
@@ -78,8 +82,9 @@ export function refreshHandDiscardModal(
   grid.innerHTML = "";
   const min = pending!.minDiscard ?? 1;
   const max = pending!.maxDiscard ?? min;
+  const ownerHand = pendingOwnerHand(pub, priv);
 
-  for (const card of priv.hand) {
+  for (const card of ownerHand) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "hand-discard-pick-card";

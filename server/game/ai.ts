@@ -1,13 +1,47 @@
 import type { DrawChoice, GameAction, GameState, PlayerState } from "../../shared/types.js";
 import { getCard } from "../../shared/cards.js";
 import {
+  canHealPossessed,
   canPlayCard,
   canPlayCardInCurrentPhase,
 } from "./effects/primitives.js";
 import { canVoteRest } from "./rules.js";
-import { getDiscussionSuggestions, pickSuggestedCard } from "./discussion-strategy.js";
+import { pickSuggestedCard } from "./discussion-strategy.js";
 
-export { getDiscussionSuggestions, pickSuggestedCard };
+export { pickSuggestedCard };
+
+export function pendingControllerId(state: GameState): string | null {
+  const pending = state.pendingChoice;
+  if (!pending) return null;
+  return pending.controllerPlayerId ?? pending.playerId;
+}
+
+/** Solo: human may play currently legal AI-owned cards. */
+export function canPlayTeamCard(
+  state: GameState,
+  owner: PlayerState,
+  cardInstanceId: string
+): boolean {
+  if (state.mode !== "solo") return false;
+  if (state.phase !== "day" && state.phase !== "night") return false;
+  if (state.pendingChoice || state.presentationHold) return false;
+  if (owner.isHuman) return false;
+  const instance = owner.hand.find((c) => c.instanceId === cardInstanceId);
+  if (!instance) return false;
+  const def = getCard(instance.cardId);
+  if (def.effectId === "rule_book") return false;
+  if (!canPlayCardInCurrentPhase(state, def)) return false;
+  if (!canPlayCard(state, owner, instance.cardId)) return false;
+  const usesPhaseAction = def.cycleIcon && !def.instant;
+  if (usesPhaseAction && owner.usedPhaseAction) return false;
+  if (def.effectId === "gifts") {
+    if (state.modifiers.caringGiftsBlocked) return true;
+    if (!canHealPossessed(state)) return false;
+    if (owner.hand.length < 2) return false;
+  }
+  if (def.effectId === "fast_and_pray" && owner.hand.length < 2) return false;
+  return true;
+}
 
 export function getLegalActions(state: GameState, player: PlayerState): GameAction[] {
   const actions: GameAction[] = [];
@@ -70,27 +104,50 @@ export function getLegalActions(state: GameState, player: PlayerState): GameActi
     }
   }
 
-  if (state.pendingChoice?.playerId === player.id) {
-    if (state.pendingChoice.options) {
-      for (const opt of state.pendingChoice.options) {
+  if (
+    state.mode === "solo" &&
+    player.isHuman &&
+    !state.pendingChoice &&
+    (state.phase === "day" || state.phase === "night")
+  ) {
+    for (const owner of state.players) {
+      if (owner.isHuman) continue;
+      for (const card of owner.hand) {
+        if (canPlayTeamCard(state, owner, card.instanceId)) {
+          actions.push({
+            type: "PLAY_TEAM_CARD",
+            ownerPlayerId: owner.id,
+            cardInstanceId: card.instanceId,
+          });
+        }
+      }
+    }
+  }
+
+  const controllerId = pendingControllerId(state);
+  if (controllerId === player.id && state.pendingChoice) {
+    const pending = state.pendingChoice;
+    const owner = state.players.find((p) => p.id === pending.playerId);
+    if (pending.options) {
+      for (const opt of pending.options) {
         actions.push({ type: "RESOLVE_PICK_ONE", optionId: opt.id });
       }
     }
-    if (state.pendingChoice.targets) {
-      for (const t of state.pendingChoice.targets) {
+    if (pending.targets) {
+      for (const t of pending.targets) {
         actions.push({ type: "SELECT_TARGET", targetId: t });
       }
     }
-    if (state.pendingChoice.kind === "discard_cards" && player.hand.length) {
+    if (pending.kind === "discard_cards" && owner && owner.hand.length) {
       actions.push({
         type: "DISCARD_CARDS",
-        cardInstanceIds: [player.hand[0].instanceId],
+        cardInstanceIds: [owner.hand[0].instanceId],
       });
     }
-    if (state.pendingChoice.kind === "distribute_energy") {
+    if (pending.kind === "distribute_energy") {
       actions.push({
         type: "DISTRIBUTE_ENERGY",
-        distribution: buildEnergyDistribution(state, state.pendingChoice.amount ?? 5, player.id),
+        distribution: buildEnergyDistribution(state, pending.amount ?? 5, pending.playerId),
       });
     }
     if (state.pendingRerollPrompt) return actions;
@@ -126,7 +183,10 @@ export function pickAiAction(state: GameState, player: PlayerState): GameAction 
     return { type: "DECLINE_REROLL" };
   }
 
-  if (state.pendingChoice?.playerId === player.id) {
+  const controllerId = pendingControllerId(state);
+  if (controllerId && controllerId !== player.id) {
+    // Human (or another player) controls this pending — AI must not resolve it.
+  } else if (state.pendingChoice?.playerId === player.id) {
     const pending = state.pendingChoice;
     if (pending.options?.length) {
       return { type: "RESOLVE_PICK_ONE", optionId: pending.options[0].id };
@@ -198,10 +258,8 @@ export function runAiTurns(state: GameState, apply: (playerId: string, action: G
       break;
     }
 
-    if (
-      state.pendingChoice?.playerId &&
-      state.players.find((p) => p.id === state.pendingChoice!.playerId)?.isHuman
-    ) {
+    const controllerId = pendingControllerId(state);
+    if (controllerId && state.players.find((p) => p.id === controllerId)?.isHuman) {
       break;
     }
     let acted = false;

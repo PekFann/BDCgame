@@ -13,7 +13,6 @@ import {
   renderHandLabel,
   renderPhaseActions,
   renderPossessedPanelActions,
-  renderDiscussionButton,
   getHandCardVisualClass,
   type HandRenderContext,
 } from "./ws-client.js";
@@ -182,7 +181,6 @@ function renderFooterChrome(
   if (discardSlot) {
     renderDiscardPileSlot(discardSlot, pub, () => client.publicState);
   }
-  renderDiscussionButton(document.getElementById("hand-discussion")!, pub, priv, send);
   const possessedActions = document.getElementById("possessed-actions");
   if (possessedActions) {
     renderPossessedPanelActions(possessedActions, pub, priv, humanPlayerId, send);
@@ -200,7 +198,7 @@ function renderSelectedHand(
   const viewingId = resolveViewingPlayerId(pub, humanPlayerId);
   const viewingPlayer = pub.players.find((p) => p.id === viewingId);
   const hand = getTeamHand(priv, viewingId);
-  const modalCtx = { pub, priv, send, humanPlayerId };
+  const modalCtx = { pub, priv, send, humanPlayerId, ownerPlayerId: viewingId };
 
   const handCtx: HandRenderContext = {
     phase: pub.phase,
@@ -210,7 +208,6 @@ function renderSelectedHand(
     viewingPlayerId: viewingId,
     onCardClick: (card: CardInstance) => {
       if (isInputLocked()) return;
-      if (viewingId !== humanPlayerId) return;
       openCardModal(card, modalCtx);
     },
   };
@@ -266,7 +263,13 @@ function refreshGameplayModals(
   priv: PrivateGameState,
   send: (a: Parameters<typeof client.sendAction>[0]) => void,
   humanPlayerId: string,
-  modalCtx: { pub: PublicGameState; priv: PrivateGameState; send: (a: Parameters<typeof client.sendAction>[0]) => void; humanPlayerId: string }
+  modalCtx: {
+    pub: PublicGameState;
+    priv: PrivateGameState;
+    send: (a: Parameters<typeof client.sendAction>[0]) => void;
+    humanPlayerId: string;
+    ownerPlayerId?: string;
+  }
 ): void {
   refreshCardModalIfOpen(modalCtx);
   refreshDrawPhaseModal(pub, humanPlayerId, send, "solo");
@@ -366,7 +369,8 @@ function renderGameUI(): void {
   setGameIntroSend(send);
   const humanPlayerId = getHumanPlayerId(pub);
   ensureFriendshipBaseline(pub, humanPlayerId);
-  const modalCtx = { pub, priv, send, humanPlayerId };
+  const viewingId = resolveViewingPlayerId(pub, humanPlayerId);
+  const modalCtx = { pub, priv, send, humanPlayerId, ownerPlayerId: viewingId };
   const handEl = document.getElementById("hand")!;
   const actionsEl = document.getElementById("actions")!;
 
@@ -426,11 +430,13 @@ function renderGameUI(): void {
         const latestPriv = client.privateState ?? undefined;
         if (!latestPub || !latestPriv) return;
         renderSelectedHand(latestPub, latestPriv, humanPlayerId, send);
+        const latestViewing = resolveViewingPlayerId(latestPub, humanPlayerId);
         refreshGameplayModals(latestPub, latestPriv, send, humanPlayerId, {
           pub: latestPub,
           priv: latestPriv,
           send,
           humanPlayerId,
+          ownerPlayerId: latestViewing,
         });
       });
     } else {

@@ -96,7 +96,10 @@ export interface PendingChoice {
     | "donut_bandit"
     | "haunted_pizza"
     | "pick_action_discard";
+  /** Effect/card owner — pays costs and receives effects. */
   playerId: string;
+  /** Who may resolve this choice; defaults to playerId. */
+  controllerPlayerId?: string;
   cardInstanceId?: string;
   cardId?: string;
   options?: { id: string; label: string }[];
@@ -266,26 +269,6 @@ export interface PublicGameState {
   connectedHumanCount: number;
 }
 
-export type DiscussionCategory =
-  | "heal"
-  | "damage"
-  | "friendship"
-  | "reveal"
-  | "energy"
-  | "utility";
-
-export interface DiscussionSuggestion {
-  playerId: string;
-  playerName: string;
-  cardInstanceId: string;
-  cardId: string;
-  score: number;
-  rationale: string;
-  category: DiscussionCategory;
-  energyCost: number;
-  friendshipCost: number;
-}
-
 export interface TeamHandView {
   playerId: string;
   name: string;
@@ -299,7 +282,6 @@ export interface PrivateGameState {
   firstAidKit: boolean;
   legalActions: GameAction[];
   teamHands: TeamHandView[];
-  discussionSuggestions: DiscussionSuggestion[];
 }
 
 export type GameAction =
@@ -307,6 +289,13 @@ export type GameAction =
   | { type: "SET_LOBBY_POSSESSED"; possessedId: string }
   | { type: "CHOOSE_DRAW"; choice: DrawChoice }
   | { type: "PLAY_CARD"; cardInstanceId: string; targetId?: string; pickOptionId?: string }
+  | {
+      type: "PLAY_TEAM_CARD";
+      ownerPlayerId: string;
+      cardInstanceId: string;
+      targetId?: string;
+      pickOptionId?: string;
+    }
   | { type: "REST_VOTE"; vote: boolean }
   | { type: "ADVANCE_PHASE" }
   | { type: "RESOLVE_PICK_ONE"; optionId: string }
@@ -319,7 +308,6 @@ export type GameAction =
   | { type: "SKIP_AI_PLAY" }
   | { type: "ACK_PRESENTATION" }
   | { type: "ACK_GAME_INTRO" }
-  | { type: "PLAY_DISCUSSED_CARD"; ownerPlayerId: string; cardInstanceId: string }
   | { type: "ACCEPT_REROLL" }
   | { type: "DECLINE_REROLL" }
   | { type: "USE_LIGHTHOUSE"; discardInstanceId: string };

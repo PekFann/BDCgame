@@ -1,3 +1,5 @@
+import { playCardDrawSound } from "./audio.js";
+
 const REVEAL_MS = 650;
 
 function sleep(ms: number): Promise<void> {
@@ -16,6 +18,7 @@ async function revealHeroSlot(slot: HTMLElement): Promise<void> {
   slot.classList.add("hero-intro-pending");
   await waitForLayout();
 
+  playCardDrawSound();
   slot.classList.remove("hero-intro-pending");
   slot.classList.add("hero-intro-reveal");
   await sleep(REVEAL_MS + 80);

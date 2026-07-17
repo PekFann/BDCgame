@@ -1,6 +1,6 @@
 import type { GameAction, PresentationHold, PublicGameState } from "../../shared/types.js";
 import cardsData from "../../data/cards.json";
-import { playDiceRollSound } from "./audio.js";
+import { playDiceRollSoundDelayed, cancelPendingDiceRollSound } from "./audio.js";
 import { isFriendshipGainOption, snapshotFriendshipBeforeChoice } from "./friendship-vfx.js";
 import { cardImg, cardName, getHumanPlayerId } from "./ws-client.js";
 
@@ -180,6 +180,7 @@ function lockDiceToFace(container: HTMLElement, roll: number): void {
 }
 
 export async function animatePhysicalDice(container: HTMLElement, finalRoll: number): Promise<void> {
+  cancelPendingDiceRollSound();
   let cube = container.querySelector(".dice-cube-3d") as HTMLElement | null;
   if (!cube) {
     mountDiceScene(container, true);
@@ -192,6 +193,8 @@ export async function animatePhysicalDice(container: HTMLElement, finalRoll: num
   if (scene) {
     delete scene.dataset.diceScaledOut;
     scene.style.visibility = "";
+    scene.style.opacity = "";
+    scene.style.transition = "";
   }
   container.classList.remove("dice-host--scale-out", "is-collapsed");
   delete container.dataset.diceScaledOut;
@@ -201,13 +204,22 @@ export async function animatePhysicalDice(container: HTMLElement, finalRoll: num
   const previousRoll = container.dataset.diceRoll
     ? parseInt(container.dataset.diceRoll, 10)
     : NaN;
-  const startFace =
-    !Number.isNaN(previousRoll) && previousRoll >= 1 && previousRoll <= 6
-      ? previousRoll
-      : 1;
+  const hasLandedPrior =
+    container.dataset.diceLanded === "1" &&
+    !Number.isNaN(previousRoll) &&
+    previousRoll >= 1 &&
+    previousRoll <= 6 &&
+    previousRoll !== finalRoll;
 
-  lockDiceToFace(container, startFace);
-  await sleep(PRE_ROLL_STATIC_MS);
+  let startFace = finalRoll;
+  if (hasLandedPrior) {
+    startFace = previousRoll;
+    lockDiceToFace(container, startFace);
+    await sleep(PRE_ROLL_STATIC_MS);
+  } else {
+    const neutralFace = FACE_ANGLES[1];
+    cube.style.transform = faceTransform(neutralFace);
+  }
 
   cube = container.querySelector(".dice-cube-3d") as HTMLElement | null;
   if (!cube) return;
@@ -216,7 +228,7 @@ export async function animatePhysicalDice(container: HTMLElement, finalRoll: num
   cube.classList.remove("is-landed", "is-holding");
   delete container.dataset.diceLanded;
 
-  playDiceRollSound();
+  playDiceRollSoundDelayed(1000);
   const tumblePath = buildTumblePath(finalRoll, startFace);
 
   await new Promise<void>((resolve) => {
@@ -283,8 +295,8 @@ async function scaleDownDiceScene(container: HTMLElement): Promise<void> {
   await sleep(SCALE_OUT_MS);
   scene.dataset.diceScaledOut = "1";
   container.dataset.diceScaledOut = "1";
-  // Hide only after shrink completes — keep dice visible through the scale.
-  scene.style.visibility = "hidden";
+  scene.style.opacity = "0";
+  scene.style.pointerEvents = "none";
 
   const cube = container.querySelector(".dice-cube-3d");
   cube?.classList.remove("is-landed", "is-holding");
@@ -361,6 +373,8 @@ export async function runTriggerDiceAnimation(
       delete scene.dataset.diceScaledOut;
       scene.classList.remove("dice-scene--scale-out");
       scene.style.visibility = "";
+      scene.style.opacity = "";
+      scene.style.pointerEvents = "";
     }
     await animatePhysicalDice(host, roll);
     host.dataset.diceLanded = "1";
@@ -621,7 +635,6 @@ export async function runTriggerRollModalPresentation(
           void (async () => {
             if (diceHost) {
               await scaleDownDiceScene(diceHost);
-              diceHost.remove();
             }
             detail.remove();
             panel.classList.add("trigger-roll-panel--event-only");
@@ -630,6 +643,8 @@ export async function runTriggerRollModalPresentation(
             outcomeHost.hidden = false;
             const img = outcomeHost.querySelector(".trigger-event-reveal-img");
             img?.classList.add("is-scaling-in");
+            await waitForPaint();
+            diceHost?.remove();
             await sleep(EVENT_CARD_SCALE_IN_MS);
 
             drawBtn.remove();

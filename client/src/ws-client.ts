@@ -77,20 +77,55 @@ export function formatEndPhaseButtonLabel(
 
 function renderDncPhaseBands(pub: PublicGameState): string {
   if (!pub.currentDncPhases?.length) return "";
+  const count = pub.currentDncPhases.length;
+  const index = Math.max(0, Math.min(pub.dncPhaseIndex, count - 1));
+  const weights =
+    pub.currentDncPhaseWeights?.length === count
+      ? pub.currentDncPhaseWeights
+      : pub.currentDncPhases.map(() => 20);
   return `
-    <div class="dnc-phase-bands" aria-hidden="true">
+    <div class="dnc-phase-bands" aria-hidden="true" style="--dnc-phase-count:${count};--dnc-phase-index:${index}">
+      <div class="dnc-phase-marker dnc-phase-marker--left"></div>
+      <div class="dnc-phase-marker dnc-phase-marker--right"></div>
       ${pub.currentDncPhases
-        .map((phase, index) => {
+        .map((phase, i) => {
           const state =
-            index === pub.dncPhaseIndex
+            i === pub.dncPhaseIndex
               ? "is-current"
-              : index < pub.dncPhaseIndex
+              : i < pub.dncPhaseIndex
                 ? "is-done"
                 : "";
-          return `<div class="dnc-phase-band ${state}" data-phase="${phase}"></div>`;
+          return `<div class="dnc-phase-band ${state}" data-phase="${phase}" data-phase-index="${i}" style="flex:${weights[i]} 1 0"></div>`;
         })
         .join("")}
     </div>`;
+}
+
+/** Position phase markers using measured band boxes (accounts for margins). */
+export function syncDncPhaseMarker(root: HTMLElement): void {
+  const bands = root.querySelector(".dnc-phase-bands") as HTMLElement | null;
+  const markers = root.querySelectorAll(".dnc-phase-marker");
+  const current = root.querySelector(".dnc-phase-band.is-current") as HTMLElement | null;
+  if (!bands || !markers.length || !current) return;
+
+  const bandTop = current.offsetTop;
+  const bandHeight = current.offsetHeight;
+  markers.forEach((el) => {
+    const marker = el as HTMLElement;
+    marker.style.top = `${bandTop}px`;
+    marker.style.height = `${bandHeight}px`;
+    marker.classList.add("is-visible");
+  });
+}
+
+function bindDncPhaseMarkerSync(root: HTMLElement): void {
+  const sync = () => syncDncPhaseMarker(root);
+  requestAnimationFrame(sync);
+  const dncImg = root.querySelector(".dnc-img") as HTMLImageElement | null;
+  if (dncImg) {
+    if (dncImg.complete) requestAnimationFrame(sync);
+    else dncImg.addEventListener("load", sync, { once: true });
+  }
 }
 
 export class GameClient {
@@ -669,6 +704,7 @@ export function renderBoard(
       ${renderPlayerRoster(pub.players, selectedPlayerId, rosterCtx)}
     </div>
   `;
+  bindDncPhaseMarkerSync(root);
 }
 
 export function renderCompactStatus(

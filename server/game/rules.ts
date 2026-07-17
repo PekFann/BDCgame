@@ -42,11 +42,17 @@ export function phaseActionsFull(state: GameState): boolean {
 export function canVoteRest(state: GameState, player: PlayerState): boolean {
   if (state.phase !== "day" && state.phase !== "night") return false;
   if (player.restVote !== null) return false;
-  return !player.usedPhaseAction && phaseActionsFull(state);
+  if (player.usedPhaseAction) return false;
+  // 2-player multi: personal Rest allowed even after the shared pool is spent.
+  if (state.mode === "multi" && state.playerCount === 2) return true;
+  return phaseActionsFull(state);
 }
 
 export function restEligiblePlayers(state: GameState): PlayerState[] {
   if (state.phase !== "day" && state.phase !== "night") return [];
+  if (state.mode === "multi" && state.playerCount === 2) {
+    return state.players.filter((p) => !p.usedPhaseAction && p.restVote === null);
+  }
   return state.players.filter((p) => !p.usedPhaseAction && phaseActionsFull(state));
 }
 

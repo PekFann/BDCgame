@@ -252,11 +252,71 @@ a:hover {
   flex: 0 0 auto;
   align-self: flex-end;
   padding-bottom: 0;
+  margin-left: 0.85rem;
+  padding-left: 0.55rem;
 }
 
 .board-dnc-col .card-slot.dnc {
   min-width: clamp(72px, 10vw, 120px);
   margin-bottom: var(--hero-caption-offset);
+}
+
+.dnc-card-frame {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
+.dnc-phase-bands {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+}
+
+.dnc-phase-marker {
+  position: absolute;
+  width: 4px;
+  border-radius: 2px;
+  background: #fd254e;
+  box-shadow: 0 0 0 1px rgba(253, 37, 78, 0.35);
+  opacity: 0;
+  transition: top 0.2s ease, height 0.2s ease, opacity 0.15s ease;
+  z-index: 2;
+}
+
+.dnc-phase-marker--left {
+  left: -7px;
+}
+
+.dnc-phase-marker--right {
+  right: -7px;
+  left: auto;
+}
+
+.dnc-phase-marker.is-visible {
+  opacity: 1;
+}
+
+.dnc-phase-band {
+  flex: 1 1 0;
+  border-radius: 4px;
+  margin: 1px 2px;
+  box-sizing: border-box;
+  border: 2px solid transparent;
+}
+
+.dnc-phase-band.is-current {
+  /* Current phase marked by .dnc-phase-marker, not a fill overlay. */
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.dnc-phase-band.is-done {
+  background: transparent;
+  border-color: transparent;
 }
 
 .board-event-col {
@@ -400,40 +460,6 @@ a:hover {
 .board-dnc-col .card-slot.dnc img.dnc-img {
   height: var(--hero-card-max-h);
   max-height: var(--dnc-hero-max-h);
-}
-
-.dnc-card-frame {
-  position: relative;
-  display: inline-block;
-  line-height: 0;
-}
-
-.dnc-phase-bands {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  pointer-events: none;
-}
-
-.dnc-phase-band {
-  flex: 1;
-  border-radius: 4px;
-  margin: 1px 2px;
-  box-sizing: border-box;
-  border: 2px solid transparent;
-  transition: background 0.2s ease, border-color 0.2s ease;
-}
-
-.dnc-phase-band.is-current {
-  border-color: var(--gold);
-  background: rgba(201, 162, 77, 0.15);
-  box-shadow: inset 0 0 12px rgba(201, 162, 77, 0.2);
-}
-
-.dnc-phase-band.is-done {
-  border-color: rgba(70, 100, 72, 0.5);
-  background: rgba(50, 72, 54, 0.12);
 }
 
 .rest-vote-bar {
@@ -2165,9 +2191,12 @@ a:hover {
 }
 
 .possessed-attachments {
-  top: -8%;
-  right: -22%;
+  top: 0;
+  left: 0;
+  right: auto;
+  transform: translateX(calc(-100% - 0.55rem));
   flex-direction: row;
+  pointer-events: none;
 }
 
 .demon-attachments {
@@ -2378,6 +2407,20 @@ a:hover {
   display: block;
   width: 100%;
   height: auto;
+}
+
+/* Trumpet of Victory: hand-card size, left of possessed */
+.board-attachment.trumpet-attachment {
+  width: var(--hand-card-w);
+  max-width: var(--hand-card-w);
+  height: var(--hand-card-h);
+  flex: 0 0 auto;
+}
+
+.board-attachment.trumpet-attachment img {
+  width: var(--hand-card-w);
+  height: var(--hand-card-h);
+  object-fit: cover;
 }
 
 .attachment-hp {
@@ -2628,12 +2671,88 @@ button.lighthouse-attachment.is-active:hover {
   }
 }
 
+.draw-reward-float {
+  position: fixed;
+  z-index: 311;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(12, 10, 18, 0.72);
+  border: 1px solid rgba(201, 162, 77, 0.28);
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #f5e9c8;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.85);
+  pointer-events: none;
+  transform: translate(-50%, 0);
+  opacity: 0;
+  white-space: nowrap;
+}
+
+.draw-reward-float--active {
+  animation: drawRewardFloat 0.9s ease-out forwards;
+}
+
+.draw-reward-float-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.draw-reward-float-sep {
+  opacity: 0.65;
+  font-weight: 700;
+}
+
+.draw-reward-float-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  display: inline-block;
+  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.65));
+}
+
+.draw-reward-float-card {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+@keyframes drawRewardFloat {
+  from {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -48px);
+  }
+}
+
 .card-slot.possessed.possessed--friendship-hit {
   animation: possessedFriendshipPulse 0.6s ease-out;
 }
 
 .card-slot.possessed.possessed--friendship-hit img {
   filter: brightness(1.2);
+}
+
+.roster-stat.roster-stat--friendship-hit {
+  animation: rosterFriendshipPulse 0.6s ease-out;
+}
+
+.roster-stat.roster-stat--friendship-hit .roster-stat-icon {
+  filter: brightness(1.35) drop-shadow(0 0 8px rgba(236, 64, 122, 0.75));
+}
+
+@keyframes rosterFriendshipPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.15);
+  }
 }
 
 @keyframes possessedFriendshipPulse {

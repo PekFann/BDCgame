@@ -29,3 +29,25 @@ export function playDiceRollSound(): void {
     // Autoplay blocked or audio unavailable — silent fail.
   }
 }
+
+const DICE_ROLL_SOUND_DELAY_MS = 1000;
+let pendingDiceRollSoundTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Schedule dice roll sound after a short delay; cancels any previous pending play. */
+export function playDiceRollSoundDelayed(delayMs = DICE_ROLL_SOUND_DELAY_MS): void {
+  if (pendingDiceRollSoundTimer !== null) {
+    clearTimeout(pendingDiceRollSoundTimer);
+    pendingDiceRollSoundTimer = null;
+  }
+  pendingDiceRollSoundTimer = setTimeout(() => {
+    pendingDiceRollSoundTimer = null;
+    playDiceRollSound();
+  }, delayMs);
+}
+
+export function cancelPendingDiceRollSound(): void {
+  if (pendingDiceRollSoundTimer !== null) {
+    clearTimeout(pendingDiceRollSoundTimer);
+    pendingDiceRollSoundTimer = null;
+  }
+}

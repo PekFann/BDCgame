@@ -185,6 +185,12 @@ export function initPlayerApp(config: PlayerAppConfig): GameClient {
       const viewingHand = getTeamHand(priv, viewingId);
       renderHandLabel(handLabelEl, viewingPlayer?.name ?? name, viewingId === human.id);
 
+      if (
+        pub.presentationHold?.at === "post_draw" ||
+        pub.presentationHold?.at === "post_rest"
+      ) {
+        // Presentation orchestrator owns hand animation for these holds.
+      } else {
       const prevIds = getPrevHandIdsForPlayer(viewingId);
 
       if (!isDrawAnimating()) {
@@ -195,8 +201,7 @@ export function initPlayerApp(config: PlayerAppConfig): GameClient {
         if (
           newCardIds.size > 0 &&
           (!pub.presentationHold || pub.presentationHold.at === "manifest") &&
-          isGameIntroDismissed() &&
-          viewingId === human.id
+          isGameIntroDismissed()
         ) {
           const capturedPrev = prevIds;
           const currentHand = viewingHand;
@@ -209,6 +214,11 @@ export function initPlayerApp(config: PlayerAppConfig): GameClient {
             handCtx
           ).then(() => {
             setPrevHandIdsForPlayer(viewingId, currentHand);
+            for (const th of priv.teamHands) {
+              if (th.playerId !== viewingId) {
+                setPrevHandIdsForPlayer(th.playerId, th.hand);
+              }
+            }
           });
         } else {
           renderHand(handEl, viewingHand, handCtx);
@@ -216,8 +226,14 @@ export function initPlayerApp(config: PlayerAppConfig): GameClient {
             pub.presentationHold?.at === "manifest" && newCardIds.size > 0;
           if (!pub.presentationHold || !skipPrevSync) {
             setPrevHandIdsForPlayer(viewingId, viewingHand);
+            for (const th of priv.teamHands) {
+              if (th.playerId !== viewingId) {
+                setPrevHandIdsForPlayer(th.playerId, th.hand);
+              }
+            }
           }
         }
+      }
       }
 
       renderRestVoteBar(document.getElementById("rest-vote-bar")!, pub, priv, human.id, send);
@@ -237,8 +253,8 @@ export function initPlayerApp(config: PlayerAppConfig): GameClient {
       if (pub.presentationHold) {
         void handlePresentationUpdate(pub, {
           handRoot: handEl,
-          prevHandIds: getPrevHandIdsForPlayer(viewingId),
-          hand: viewingHand,
+          prevHandIds: getPrevHandIdsForPlayer(human.id),
+          hand: getTeamHand(priv, human.id),
           priv,
           onRenderHand: (handToShow) => renderHand(handEl, handToShow, handCtx),
           handCtx,
@@ -247,6 +263,17 @@ export function initPlayerApp(config: PlayerAppConfig): GameClient {
           humanPlayerId: human.id,
           friendshipVfxMode: "phone",
           getPub: () => client.publicState,
+          focusPlayerHand: (playerId: string) => {
+            if (playerId !== human.id) return null;
+            const latestPub = client.publicState;
+            const latestPriv = client.privateState ?? undefined;
+            if (!latestPub || !latestPriv) return null;
+            return {
+              hand: getTeamHand(latestPriv, human.id),
+              handCtx,
+              prevIds: getPrevHandIdsForPlayer(human.id),
+            };
+          },
         });
       }
     } finally {

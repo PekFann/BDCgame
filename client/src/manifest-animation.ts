@@ -27,7 +27,8 @@ export async function runManifestAnimation(
   }
 
   demon.classList.add("manifest-lunge");
-  await sleep(420);
+  // Apply hit almost immediately (was 420ms); toast wait already shortened by 500ms.
+  await sleep(0);
   possessed.classList.add("manifest-hit");
 
   const flash = document.createElement("div");

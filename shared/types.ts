@@ -39,6 +39,8 @@ export interface DncDefinition {
   triggerDice: number[];
   eventDice: number[];
   phases: DncCyclePhase[];
+  /** Relative vertical band heights (top→bottom), same order as `phases`. */
+  phaseBandWeights?: number[];
 }
 
 export type Phase =
@@ -142,7 +144,8 @@ export interface PendingCardRollResume {
 }
 
 export type PresentationHold =
-  | { at: "post_draw"; choice: DrawChoice }
+  | { at: "post_draw"; choice: DrawChoice; playerId?: string }
+  | { at: "post_rest"; reward: "draw" | "energy" }
   | { at: "manifest"; preview: ManifestPreview }
   | { at: "post_trigger_roll"; roll: number; outcome: TriggerOutcome; eventCardId?: string }
   | { at: "post_event_roll"; roll: number; effectId: string; playerId: string };
@@ -264,6 +267,7 @@ export interface PublicGameState {
   currentDncDayTotal: number;
   currentDncNightTotal: number;
   currentDncPhases: DncCyclePhase[];
+  currentDncPhaseWeights: number[];
   pendingRerollPrompt: PendingRerollPrompt | null;
   lobbyPossessedId: string | null;
   connectedHumanCount: number;

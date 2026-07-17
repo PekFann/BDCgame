@@ -8,6 +8,17 @@ export function getDncPhases(state: GameState): Phase[] {
   return DNC[state.currentDncId]?.phases ?? [];
 }
 
+const DEFAULT_BAND_WEIGHT = 20;
+
+export function getDncPhaseWeights(state: GameState): number[] {
+  const phases = getDncPhases(state);
+  if (!phases.length) return [];
+  const dnc = state.currentDncId ? DNC[state.currentDncId] : null;
+  const weights = dnc?.phaseBandWeights;
+  if (weights?.length === phases.length) return weights;
+  return phases.map(() => DEFAULT_BAND_WEIGHT);
+}
+
 export function resetDayNightVoteState(state: GameState): void {
   state.restPollClosed = false;
   for (const p of state.players) {

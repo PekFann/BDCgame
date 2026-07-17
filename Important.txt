@@ -1,0 +1,3 @@
+cd "C:\Pek Fann\Personal Projects\Apps\Breaking Demon's Contract HTML5"
+git add .
+git commit -m "Working solo baseline before further changes"

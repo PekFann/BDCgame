@@ -43,6 +43,7 @@ import {
   enterDncPhase,
   finishDncCyclePhases,
   getDncPhases,
+  getDncPhaseWeights,
   resetDayNightVoteState,
 } from "./phases.js";
 import {
@@ -495,7 +496,7 @@ function applyPlayerDrawChoice(state: GameState, playerId: string, choice: DrawC
   player.drawChoice = choice;
 
   if (player.isHuman) {
-    state.presentationHold = { at: "post_draw", choice };
+    state.presentationHold = { at: "post_draw", choice, playerId };
   }
 }
 
@@ -537,7 +538,7 @@ function handleAckPresentation(state: GameState, playerId: string): void {
   const human = state.players.find((p) => p.id === playerId);
   if (!human?.isHuman) throw new Error("Only human can acknowledge presentation");
   const hold = state.presentationHold;
-  if (!hold) throw new Error("Nothing to acknowledge");
+  if (!hold) return;
 
   if (hold.at === "manifest") {
     state.presentationHold = null;
@@ -575,6 +576,12 @@ function handleAckPresentation(state: GameState, playerId: string): void {
   if (hold.at === "post_draw") {
     state.presentationHold = null;
     tryAdvanceFromDrawPhase(state);
+    return;
+  }
+
+  if (hold.at === "post_rest") {
+    state.presentationHold = null;
+    advancePhase(state);
   }
 }
 
@@ -691,6 +698,24 @@ function handleSkipAiPlay(state: GameState, playerId: string): void {
   state.pendingAiPlay = null;
 }
 
+function applySlothAfterRest(state: GameState): void {
+  if (state.demon && getCard(state.demon.cardId).effectId === "demon_sloth") {
+    state.modifiers.slothTripleAttack = true;
+    log(state, "Sloth triples attack after Rest.");
+  }
+}
+
+function applyGroupRestRewards(state: GameState): "draw" | "energy" {
+  if (state.phase === "day") {
+    for (const p of state.players) drawForPlayer(state, p, 1);
+    log(state, "Group Rest: each player draws 1 card.");
+    return "draw";
+  }
+  for (const p of state.players) gainEnergy(p, 1, state);
+  log(state, "Group Rest: each player gains 1 energy.");
+  return "energy";
+}
+
 function handleRestVote(state: GameState, playerId: string, vote: boolean): void {
   if (state.phase !== "day" && state.phase !== "night") {
     throw new Error("Cannot vote rest now");
@@ -704,20 +729,48 @@ function handleRestVote(state: GameState, playerId: string, vote: boolean): void
   player.restVote = true;
   log(state, `${player.name} votes to Rest.`);
 
+  // Solo: one human Rest rests the whole table, then present draws before advancing.
+  if (state.mode === "solo") {
+    for (const p of state.players) p.restVote = true;
+    const reward = applyGroupRestRewards(state);
+    applySlothAfterRest(state);
+    if (reward === "draw") {
+      state.presentationHold = { at: "post_rest", reward: "draw" };
+    } else {
+      advancePhase(state);
+    }
+    return;
+  }
+
+  // 2-player multi: personal Rest reward immediately; phase does not advance.
+  if (state.playerCount === 2) {
+    if (state.phase === "day") {
+      drawForPlayer(state, player, 1);
+      log(state, `${player.name} Rests and draws 1 card.`);
+      if (player.isHuman) {
+        state.presentationHold = {
+          at: "post_draw",
+          choice: "card_and_energy",
+          playerId: player.id,
+        };
+      }
+    } else {
+      gainEnergy(player, 1, state);
+      log(state, `${player.name} Rests and gains 1 energy.`);
+    }
+    return;
+  }
+
+  // 3–4 player multi: wait for unanimous Rest among eligible players.
   const eligible = restEligiblePlayers(state);
   if (eligible.length > 0 && eligible.every((p) => p.restVote === true)) {
-    if (state.phase === "day") {
-      for (const p of state.players) drawForPlayer(state, p, 1);
-      log(state, "Group Rest: each player draws 1 card.");
-    } else if (state.phase === "night") {
-      for (const p of state.players) gainEnergy(p, 1, state);
-      log(state, "Group Rest: each player gains 1 energy.");
+    const reward = applyGroupRestRewards(state);
+    applySlothAfterRest(state);
+    if (reward === "draw") {
+      state.presentationHold = { at: "post_rest", reward: "draw" };
+    } else {
+      advancePhase(state);
     }
-    if (state.demon && getCard(state.demon.cardId).effectId === "demon_sloth") {
-      state.modifiers.slothTripleAttack = true;
-      log(state, "Sloth triples attack after Rest.");
-    }
-    advancePhase(state);
   }
 }
 
@@ -804,6 +857,7 @@ export function toPublicState(state: GameState): PublicGameState {
     currentDncDayTotal: state.currentDncId ? (DNC[state.currentDncId]?.dayActions ?? 0) : 0,
     currentDncNightTotal: state.currentDncId ? (DNC[state.currentDncId]?.nightActions ?? 0) : 0,
     currentDncPhases: getDncPhases(state) as DncCyclePhase[],
+    currentDncPhaseWeights: getDncPhaseWeights(state),
     pendingRerollPrompt: state.pendingRerollPrompt,
     lobbyPossessedId: state.lobbyPossessedId,
     connectedHumanCount: state.players.filter((p) => p.isHuman && p.isConnected).length,

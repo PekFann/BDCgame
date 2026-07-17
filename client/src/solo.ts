@@ -53,7 +53,7 @@ import { initFullscreenButton } from "./fullscreen.js";
 import {
   ensureFriendshipBaseline,
   resetFriendshipVfxTracking,
-  scheduleFriendshipGainVfx,
+  scheduleTeamFriendshipGainVfx,
 } from "./friendship-vfx.js";
 import { isInputLocked } from "./input-lock.js";
 import { handlePresentationUpdate, resetPresentationLock } from "./phase-orchestrator.js";
@@ -168,7 +168,7 @@ function renderBoardWithRoster(
   if (priv) {
     renderBoardEventChoice(board, pub, priv, humanPlayerId, send);
   }
-  scheduleFriendshipGainVfx(() => client.publicState, humanPlayerId, "solo");
+  scheduleTeamFriendshipGainVfx(() => client.publicState, humanPlayerId, "solo");
 }
 
 function renderFooterChrome(
@@ -214,7 +214,10 @@ function renderSelectedHand(
 
   renderHandLabel(handLabelEl, viewingPlayer?.name ?? "Player", viewingId === humanPlayerId);
 
-  if (pub.presentationHold?.at === "post_draw") {
+  if (
+    pub.presentationHold?.at === "post_draw" ||
+    pub.presentationHold?.at === "post_rest"
+  ) {
     return { handCtx };
   }
 
@@ -231,8 +234,7 @@ function renderSelectedHand(
   const shouldAnimate =
     newCardIds.length > 0 &&
     holdAllowsDrawAnim &&
-    isGameIntroDismissed() &&
-    viewingId === humanPlayerId;
+    isGameIntroDismissed();
 
   if (shouldAnimate) {
     const capturedPrev = prevIds;
@@ -246,12 +248,19 @@ function renderSelectedHand(
       handCtx
     ).then(() => {
       setPrevHandIdsForPlayer(viewingId, currentHand);
+      for (const th of priv.teamHands) {
+        if (th.playerId !== viewingId) setPrevHandIdsForPlayer(th.playerId, th.hand);
+      }
     });
   } else {
     renderHand(handEl, hand, handCtx);
     const skipPrevSync = pub.presentationHold?.at === "manifest" && newCardIds.length > 0;
     if (!pub.presentationHold || !skipPrevSync) {
       setPrevHandIdsForPlayer(viewingId, hand);
+      // Keep AI/teammate baselines fresh so prayer/rest draws animate only new cards.
+      for (const th of priv.teamHands) {
+        if (th.playerId !== viewingId) setPrevHandIdsForPlayer(th.playerId, th.hand);
+      }
     }
   }
 
@@ -424,6 +433,42 @@ function renderGameUI(): void {
         humanPlayerId,
         friendshipVfxMode: "solo",
         getPub: () => client.publicState,
+        focusPlayerHand: (playerId: string) => {
+          selectedPlayerId = playerId;
+          const latestPub = client.publicState;
+          const latestPriv = client.privateState ?? undefined;
+          if (!latestPub || !latestPriv) return null;
+          const viewingPlayer = latestPub.players.find((p) => p.id === playerId);
+          const hand = getTeamHand(latestPriv, playerId);
+          renderBoardWithRoster(latestPub, humanPlayerId, latestPriv, send);
+          renderHandLabel(
+            document.getElementById("hand-label")!,
+            viewingPlayer?.name ?? "Player",
+            playerId === humanPlayerId
+          );
+          const focusedCtx: HandRenderContext = {
+            phase: latestPub.phase,
+            pub: latestPub,
+            priv: latestPriv,
+            humanPlayerId,
+            viewingPlayerId: playerId,
+            onCardClick: (card: CardInstance) => {
+              if (isInputLocked()) return;
+              openCardModal(card, {
+                pub: latestPub,
+                priv: latestPriv,
+                send,
+                humanPlayerId,
+                ownerPlayerId: playerId,
+              });
+            },
+          };
+          return {
+            hand,
+            handCtx: focusedCtx,
+            prevIds: getPrevHandIdsForPlayer(playerId),
+          };
+        },
       }).then((ids) => {
         syncPrevHandIdsForPlayer(humanPlayerId, ids);
         const latestPub = client.publicState;

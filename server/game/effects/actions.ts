@@ -286,6 +286,13 @@ export function resolvePickOne(state: GameState, playerId: string, optionId: str
   if (optionId === "draw") {
     drawForPlayer(state, player, 2);
     log(state, `${player.name} draws 2 cards.`);
+    if (!state.presentationHold) {
+      state.presentationHold = {
+        at: "post_draw",
+        choice: "card_and_energy",
+        playerId,
+      };
+    }
   }
   if (optionId === "damage") {
     if (state.modifiers.prayerBlocked) {

@@ -1,5 +1,5 @@
 import type { GameState, PendingCardRollResume } from "../../shared/types.js";
-import { DNC } from "../../shared/cards.js";
+import { DNC, getCard } from "../../shared/cards.js";
 import {
   dealDamageToAllDemons,
   dealDamageToDemon,
@@ -13,11 +13,6 @@ import {
 import { getPlayer, legalDamageTargets } from "./rules.js";
 import { enterDncPhase } from "./phases.js";
 import { log } from "./util.js";
-
-function addDiscardToHand(state: GameState, player: { hand: { instanceId: string; cardId: string }[] }) {
-  const card = state.actionDiscard.pop();
-  if (card) player.hand.push(card);
-}
 
 function demonTargets(state: GameState): string[] {
   return legalDamageTargets(state);
@@ -62,8 +57,19 @@ export function resumeCardRollEffect(state: GameState, resume: PendingCardRollRe
       }
       break;
     case "instant_access":
-      if (roll <= 3 && state.actionDiscard.length > 0) addDiscardToHand(state, player);
-      else drawForPlayer(state, player, 1);
+      if (roll <= 3 && state.actionDiscard.length > 0) {
+        state.pendingChoice = {
+          kind: "pick_action_discard",
+          playerId: resume.playerId,
+          cardId: "action_17",
+          options: state.actionDiscard.map((c) => ({
+            id: c.instanceId,
+            label: getCard(c.cardId).name,
+          })),
+        };
+      } else {
+        drawForPlayer(state, player, 1);
+      }
       break;
     case "chain_broken":
       if (resume.targetId) {

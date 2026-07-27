@@ -6,6 +6,7 @@ import { cardImg, cardName, getHumanPlayerId } from "./ws-client.js";
 
 type TriggerHold = Extract<PresentationHold, { at: "post_trigger_roll" }>;
 type EventRollHold = Extract<PresentationHold, { at: "post_event_roll" }>;
+type CardRollHold = Extract<PresentationHold, { at: "post_card_roll" }>;
 
 interface CardDef {
   id: string;
@@ -217,6 +218,8 @@ export async function animatePhysicalDice(container: HTMLElement, finalRoll: num
     lockDiceToFace(container, startFace);
     await sleep(PRE_ROLL_STATIC_MS);
   } else {
+    // Neutral reset shows face 1 — tumble path must start from 1, not finalRoll.
+    startFace = 1;
     const neutralFace = FACE_ANGLES[1];
     cube.style.transform = faceTransform(neutralFace);
   }
@@ -255,16 +258,13 @@ export async function animatePhysicalDice(container: HTMLElement, finalRoll: num
     requestAnimationFrame(tick);
   });
 
-  // Keep last tumble frame (already on final face); do not rewrite transform.
+  // Snap to canonical face angles so opposite-face Euler lerps (e.g. 6↔1) do not linger.
   cube.classList.remove("is-tumbling");
-  cube.classList.add("is-landed");
-  cube.style.transition = "none";
+  lockDiceToFace(container, finalRoll);
 
   cube.classList.add("is-holding");
   await sleep(POST_LAND_HOLD_MS);
   cube.classList.remove("is-holding");
-
-  markDiceLanded(container, finalRoll);
 }
 
 function isDiceSceneScaledOut(container: HTMLElement): boolean {
@@ -363,8 +363,7 @@ export async function runTriggerDiceAnimation(
     if (!existingHost?.querySelector(".dice-scene")) {
       mountDiceScene(host, true);
     }
-    delete host.dataset.diceLanded;
-    host.dataset.diceRoll = String(roll);
+    // Leave diceRoll/diceLanded alone so animatePhysicalDice can read the prior face.
     delete host.dataset.diceScaledOut;
     host.classList.remove("dice-host--scale-out", "is-collapsed");
     host.style.visibility = "";
@@ -377,7 +376,6 @@ export async function runTriggerDiceAnimation(
       scene.style.pointerEvents = "";
     }
     await animatePhysicalDice(host, roll);
-    host.dataset.diceLanded = "1";
   }
 
   if (options?.revealNumber === true) {
@@ -726,6 +724,54 @@ export async function runEventRollModalPresentation(
   detail.innerHTML = `
     <p class="trigger-roll-detail-roll">Roll: <strong>${hold.roll}</strong></p>
     ${eventRollOutcomeMarkup(hold.effectId, hold.roll)}`;
+  diceHost?.insertAdjacentElement("afterend", detail);
+
+  const actions = appendTriggerRollActions(panel);
+  actions.innerHTML = `<button class="btn trigger-outcome-ok" type="button">Continue</button>`;
+  await waitForOkClick(panel, options?.send);
+}
+
+export function cardRollOutcomeMarkup(
+  effectId: string,
+  roll: number,
+  discardCount: number
+): string {
+  switch (effectId) {
+    case "instant_access":
+      if (roll <= 3 && discardCount > 0) {
+        return `<p class="trigger-roll-outcome"><strong>Instant Access</strong><br /><span class="card-modal-effect">Search the discard pile and take 1 card.</span></p>`;
+      }
+      return `<p class="trigger-roll-outcome"><strong>Instant Access</strong><br /><span class="card-modal-effect">Draw 1 card from the deck.</span></p>`;
+    case "talk_it_out":
+      return roll <= 4
+        ? `<p class="trigger-roll-outcome"><strong>Talk It Out!</strong><br /><span class="card-modal-effect">Reveal the demon contract.</span></p>`
+        : `<p class="trigger-roll-outcome"><strong>Talk It Out!</strong><br /><span class="card-modal-effect">You lose 1 friendship.</span></p>`;
+    case "wild_card":
+      return roll <= 3
+        ? `<p class="trigger-roll-outcome"><strong>Wild Card</strong><br /><span class="card-modal-effect">Discard your hand and draw 5 cards.</span></p>`
+        : `<p class="trigger-roll-outcome"><strong>Wild Card</strong><br /><span class="card-modal-effect">Draw 5 cards, then discard down to 2.</span></p>`;
+    case "chain_broken":
+      return `<p class="trigger-roll-outcome"><strong>The Chain is Broken</strong><br /><span class="card-modal-effect">Deal ${roll} damage to a demon.</span></p>`;
+    default:
+      return `<p class="trigger-roll-outcome"><span class="card-modal-effect">Effect resolved.</span></p>`;
+  }
+}
+
+export async function runCardRollModalPresentation(
+  panel: HTMLElement,
+  hold: CardRollHold,
+  options?: { skipDice?: boolean; send?: (a: GameAction) => void; discardCount?: number }
+): Promise<void> {
+  await ensureLandedDice(panel, hold.roll, options?.skipDice);
+  setRollTitle(panel, "Rolled");
+  clearTriggerRollPresentation(panel);
+
+  const diceHost = panel.querySelector(".trigger-roll-dice-host");
+  const detail = document.createElement("div");
+  detail.className = "trigger-roll-detail";
+  detail.innerHTML = `
+    <p class="trigger-roll-detail-roll">Roll: <strong>${hold.roll}</strong></p>
+    ${cardRollOutcomeMarkup(hold.effectId, hold.roll, options?.discardCount ?? 0)}`;
   diceHost?.insertAdjacentElement("afterend", detail);
 
   const actions = appendTriggerRollActions(panel);

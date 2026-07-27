@@ -2,10 +2,9 @@ import type { GameAction, PrivateGameState, PublicGameState, CardInstance, Phase
 import cardsData from "../../data/cards.json";
 import { isCardModalBlockingPendingActions } from "./card-modal.js";
 import { BOARD_EVENT_PENDING_KINDS, humanControlsPending } from "./pending-choice-ui.js";
-import { isGameIntroDismissed } from "./game-start-modal.js";
 import { isFriendshipGainOption, snapshotFriendshipBeforeChoice } from "./friendship-vfx.js";
 import { isInputLocked } from "./input-lock.js";
-import { ENERGY_ICON, FRIENDSHIP_ICON } from "./ui-icons.js";
+import { ENERGY_ICON, FRIENDSHIP_ICON, DAY_REST_BUTTON, NIGHT_REST_BUTTON, END_PHASE_BUTTON } from "./ui-icons.js";
 
 export { ENERGY_ICON, FRIENDSHIP_ICON } from "./ui-icons.js";
 
@@ -495,10 +494,12 @@ function rosterLighthouseMarkup(
 ): string {
   const lighthouse = findPersistentByEffect(player, "lighthouse");
   if (!lighthouse) return "";
+  const awaiting = pub.pendingLighthousePrompt?.awaitingPlayerId;
   const canUse =
-    player.id === humanPlayerId &&
     pub.phase === "manifest" &&
-    pub.presentationHold?.at === "manifest";
+    pub.presentationHold?.at === "manifest" &&
+    awaiting === player.id &&
+    (player.id === humanPlayerId || !player.isHuman);
   const tag = canUse ? "button" : "span";
   const extra = canUse
     ? ` type="button" class="lighthouse-attachment is-active" data-player-id="${player.id}" title="Lighthouse — discard 1 to block 1 manifest damage"`
@@ -604,21 +605,10 @@ export function markNewImpAttachments(root: HTMLElement, imps: { instanceId: str
 export function bindBoardAttachments(
   root: HTMLElement,
   pub: PublicGameState,
-  priv: PrivateGameState | undefined,
-  humanPlayerId: string,
-  send: (a: GameAction) => void
+  _priv: PrivateGameState | undefined,
+  _humanPlayerId: string,
+  _send: (a: GameAction) => void
 ): void {
-  root.querySelectorAll(".lighthouse-attachment.is-active").forEach((el) => {
-    const btn = el as HTMLButtonElement;
-    const clone = btn.cloneNode(true) as HTMLButtonElement;
-    btn.replaceWith(clone);
-    clone.addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (priv && clone.dataset.playerId === humanPlayerId) {
-        openLighthouseDiscardModal(priv, send);
-      }
-    });
-  });
   markNewImpAttachments(root, pub.imps);
 }
 
@@ -823,6 +813,47 @@ function createCircleButton(
   return btn;
 }
 
+function createRestImageButton(
+  phase: "day" | "night",
+  action: () => void,
+  disabled = false
+): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = disabled ? "btn btn-rest-img disabled" : "btn btn-rest-img";
+  btn.title = phase === "day" ? "Day Rest" : "Night Rest";
+  btn.disabled = disabled;
+  const img = document.createElement("img");
+  img.src = encodeURI(phase === "day" ? DAY_REST_BUTTON : NIGHT_REST_BUTTON);
+  img.alt = btn.title;
+  img.draggable = false;
+  btn.appendChild(img);
+  if (!disabled) {
+    btn.onclick = () => {
+      if (isInputLocked()) return;
+      action();
+    };
+  }
+  return btn;
+}
+
+function createEndPhaseImageButton(title: string, action: () => void): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "btn btn-rest-img";
+  btn.title = title;
+  const img = document.createElement("img");
+  img.src = encodeURI(END_PHASE_BUTTON);
+  img.alt = "End Phase";
+  img.draggable = false;
+  btn.appendChild(img);
+  btn.onclick = () => {
+    if (isInputLocked()) return;
+    action();
+  };
+  return btn;
+}
+
 export function renderPossessedPanelActions(
   root: HTMLElement,
   pub: PublicGameState,
@@ -848,12 +879,11 @@ export function renderPossessedPanelActions(
     stack.appendChild(status);
   } else {
     const canRest = legal.some((a) => a.type === "REST_VOTE" && a.vote === true);
+    const restPhase = pub.phase === "night" ? "night" : "day";
     stack.appendChild(
-      createCircleButton(
-        "Rest",
-        "Vote Rest",
+      createRestImageButton(
+        restPhase,
         () => send({ type: "REST_VOTE", vote: true }),
-        canRest ? "btn btn-rest" : "btn btn-rest disabled",
         !canRest
       )
     );
@@ -863,14 +893,14 @@ export function renderPossessedPanelActions(
     const hasInstants = legal.some((a) => a.type === "PLAY_CARD");
     const fullLabel = formatEndPhaseButtonLabel("day", pub.dayActionsRemaining, hasInstants);
     stack.appendChild(
-      createCircleButton("End\nPhase", fullLabel, () => send({ type: "ADVANCE_PHASE" }), "btn")
+      createEndPhaseImageButton(fullLabel, () => send({ type: "ADVANCE_PHASE" }))
     );
   }
   if (pub.phase === "night" && legal.some((a) => a.type === "ADVANCE_PHASE")) {
     const hasInstants = legal.some((a) => a.type === "PLAY_CARD");
     const fullLabel = formatEndPhaseButtonLabel("night", pub.nightActionsRemaining, hasInstants);
     stack.appendChild(
-      createCircleButton("End\nPhase", fullLabel, () => send({ type: "ADVANCE_PHASE" }), "btn")
+      createEndPhaseImageButton(fullLabel, () => send({ type: "ADVANCE_PHASE" }))
     );
   }
 
@@ -897,33 +927,19 @@ export function renderRestVoteBar(
 
   const legal = priv?.legalActions ?? [];
   const canRest = legal.some((a) => a.type === "REST_VOTE" && a.vote === true);
+  const restPhase = pub.phase === "night" ? "night" : "day";
 
   const bar = document.createElement("div");
   bar.className = "rest-vote-buttons";
 
   bar.appendChild(
-    createCircleButton(
-      "Rest",
-      "Vote Rest",
+    createRestImageButton(
+      restPhase,
       () => send({ type: "REST_VOTE", vote: true }),
-      canRest ? "btn btn-rest" : "btn btn-rest disabled",
       !canRest
     )
   );
   root.appendChild(bar);
-}
-
-function shouldUseTriggerRollModal(
-  pub: PublicGameState,
-  priv: PrivateGameState | undefined
-): boolean {
-  return (
-    pub.phase === "triggers" &&
-    pub.started &&
-    (isGameIntroDismissed() || pub.introAcknowledged) &&
-    !pub.presentationHold &&
-    (priv?.legalActions ?? []).some((a) => a.type === "ROLL_DICE")
-  );
 }
 
 export function renderPhaseActions(
@@ -965,21 +981,17 @@ export function renderPhaseActions(
     if (pub.phase === "day" && legal.some((a) => a.type === "ADVANCE_PHASE")) {
       const hasInstants = legal.some((a) => a.type === "PLAY_CARD");
       const fullLabel = formatEndPhaseButtonLabel("day", pub.dayActionsRemaining, hasInstants);
-      addBtn("End\nPhase", { type: "ADVANCE_PHASE" }, "btn", fullLabel);
+      container.appendChild(
+        createEndPhaseImageButton(fullLabel, () => send({ type: "ADVANCE_PHASE" }))
+      );
     }
     if (pub.phase === "night" && legal.some((a) => a.type === "ADVANCE_PHASE")) {
       const hasInstants = legal.some((a) => a.type === "PLAY_CARD");
       const fullLabel = formatEndPhaseButtonLabel("night", pub.nightActionsRemaining, hasInstants);
-      addBtn("End\nPhase", { type: "ADVANCE_PHASE" }, "btn", fullLabel);
+      container.appendChild(
+        createEndPhaseImageButton(fullLabel, () => send({ type: "ADVANCE_PHASE" }))
+      );
     }
-  }
-
-  if (
-    pub.phase === "triggers" &&
-    legal.some((a) => a.type === "ROLL_DICE") &&
-    !shouldUseTriggerRollModal(pub, priv)
-  ) {
-    addBtn("Roll Dice", { type: "ROLL_DICE" });
   }
 
   const controlsPending =

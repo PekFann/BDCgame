@@ -32,8 +32,7 @@ export function canPlayTeamCard(
   if (def.effectId === "rule_book") return false;
   if (!canPlayCardInCurrentPhase(state, def)) return false;
   if (!canPlayCard(state, owner, instance.cardId)) return false;
-  const usesPhaseAction = def.cycleIcon && !def.instant;
-  if (usesPhaseAction && owner.usedPhaseAction) return false;
+  // usedPhaseAction is Rest-only; shared day/night action pool is authoritative.
   if (def.effectId === "gifts") {
     if (state.modifiers.caringGiftsBlocked) return true;
     if (!canHealPossessed(state)) return false;
@@ -46,6 +45,24 @@ export function canPlayTeamCard(
 export function getLegalActions(state: GameState, player: PlayerState): GameAction[] {
   const actions: GameAction[] = [];
   if (state.phase === "game_over" || !state.started) return actions;
+
+  if (state.pendingLighthousePrompt && !state.pendingChoice) {
+    const awaiting = state.pendingLighthousePrompt.awaitingPlayerId;
+    const canRespond =
+      player.isHuman &&
+      awaiting &&
+      (awaiting === player.id || !state.players.find((p) => p.id === awaiting)?.isHuman);
+    if (canRespond) {
+      const owner = state.players.find((p) => p.id === awaiting);
+      if (owner) {
+        for (const card of owner.hand) {
+          actions.push({ type: "USE_LIGHTHOUSE", discardInstanceId: card.instanceId });
+        }
+        actions.push({ type: "SKIP_LIGHTHOUSE" });
+      }
+    }
+    return actions;
+  }
 
   if (state.pendingRerollPrompt && !state.pendingChoice) {
     const awaiting = state.pendingRerollPrompt.awaitingPlayerId;
@@ -178,10 +195,8 @@ export function pickAiDrawChoice(player: PlayerState): DrawChoice {
 }
 
 export function pickAiAction(state: GameState, player: PlayerState): GameAction | null {
-  const prompt = state.pendingRerollPrompt;
-  if (prompt?.awaitingPlayerId === player.id && !player.isHuman) {
-    return { type: "DECLINE_REROLL" };
-  }
+  if (state.pendingLighthousePrompt) return null;
+  if (state.pendingRerollPrompt) return null;
 
   const controllerId = pendingControllerId(state);
   if (controllerId && controllerId !== player.id) {
@@ -243,20 +258,8 @@ export function runAiTurns(state: GameState, apply: (playerId: string, action: G
   let safety = 50;
   while (safety-- > 0) {
     if (state.phase === "game_over" || state.presentationHold) break;
-
-    if (state.pendingRerollPrompt && !state.pendingChoice) {
-      const awaitingId = state.pendingRerollPrompt.awaitingPlayerId;
-      const awaiting = awaitingId ? state.players.find((p) => p.id === awaitingId) : undefined;
-      if (awaiting && !awaiting.isHuman) {
-        const human = state.players.find((p) => p.isHuman);
-        if (human) {
-          apply(human.id, { type: "DECLINE_REROLL" });
-          if (state.winner !== null) return;
-          continue;
-        }
-      }
-      break;
-    }
+    if (state.pendingLighthousePrompt) break;
+    if (state.pendingRerollPrompt && !state.pendingChoice) break;
 
     const controllerId = pendingControllerId(state);
     if (controllerId && state.players.find((p) => p.id === controllerId)?.isHuman) {

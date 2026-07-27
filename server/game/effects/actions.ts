@@ -197,6 +197,7 @@ export function startPlayCard(ctx: PlayContext): PendingChoice | null {
     return null;
   }
   if (def.effectId === "fast_and_pray") {
+    if (demonTargets(state).length === 0) throw new Error("No demon or imp to target");
     if (player.hand.length === 0) throw new Error("Need a card to discard");
     return pendingFromCard(
       { kind: "discard_cards", playerId, minDiscard: 1, maxDiscard: 1, targets: demonTargets(state) },
@@ -233,13 +234,14 @@ export function startPlayCard(ctx: PlayContext): PendingChoice | null {
     return null;
   }
   if (def.effectId === "contract_breaker") {
-    const targets = legalDamageTargets(state);
-    if (state.demon && targets.includes(state.demon.instanceId)) {
-      dealDamageToDemon(state, state.demon.instanceId, state.possessedHp, playerId);
-    } else {
-      log(state, "Cannot damage demon while contract is hidden.");
-    }
-    return null;
+    if (demonTargets(state).length === 0) throw new Error("No demon or imp to target");
+    return selectDemonTarget(
+      state,
+      playerId,
+      state.possessedHp,
+      instance.cardId,
+      cardInstanceId
+    );
   }
 
   return null;

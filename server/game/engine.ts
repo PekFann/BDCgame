@@ -28,7 +28,6 @@ import {
   applyManifest,
   applyPossessedTrigger,
   checkGameOver,
-  computeManifestPreview,
   drawEventCard,
   drawForPlayer,
   gainEnergy,
@@ -54,6 +53,7 @@ import {
   hasPendingReroll,
 } from "./dice-reroll.js";
 import { resumeCardRollEffect } from "./card-roll-resume.js";
+import { hasPendingLighthouse, skipLighthouse, useLighthouse } from "./lighthouse.js";
 
 export function createEmptyGame(mode: "solo" | "multi"): GameState {
   return {
@@ -98,6 +98,7 @@ export function createEmptyGame(mode: "solo" | "multi"): GameState {
     pendingCardRollResume: null,
     pendingPostTriggerAdvance: false,
     pendingRerollTimeTravelId: null,
+    pendingLighthousePrompt: null,
     lobbyPossessedId: null,
   };
 }
@@ -186,29 +187,15 @@ function beginCycle(state: GameState): void {
   enterDncPhase(state, 0);
 }
 
-function resolveAiRerollQueue(state: GameState): void {
-  let safety = 12;
-  while (safety-- > 0 && hasPendingReroll(state) && !state.pendingChoice) {
-    const awaitingId = state.pendingRerollPrompt?.awaitingPlayerId;
-    if (!awaitingId) break;
-    const awaiting = state.players.find((p) => p.id === awaitingId);
-    if (!awaiting || awaiting.isHuman) break;
-    const human = state.players.find((p) => p.isHuman);
-    if (!human) break;
-    try {
-      declineReroll(state, human.id);
-    } catch {
-      break;
-    }
-  }
+function resolveAiRerollQueue(_state: GameState): void {
+  // AI Time Travel offers are left for the human controller (solo proxy / multiplayer).
 }
 
 export function processAi(state: GameState): void {
   if (state.phase === "game_over") return;
   if (state.pendingAiPlay) return;
   if (state.presentationHold) return;
-
-  resolveAiRerollQueue(state);
+  if (hasPendingLighthouse(state)) return;
 
   if (hasPendingReroll(state)) return;
   runAiTurns(state, (playerId, action) => {
@@ -286,7 +273,9 @@ function applyActionInternal(state: GameState, playerId: string, action: GameAct
           playerId,
           cardInstanceId: action.cardInstanceId,
           targetId: action.targetId,
-        }) ?? null;
+        }) ??
+        state.pendingChoice ??
+        null;
       stampSoloController(state);
       if (action.pickOptionId && state.pendingChoice?.kind === "pick_one") {
         resolvePickOne(state, playerId, action.pickOptionId);
@@ -378,13 +367,15 @@ function applyActionInternal(state: GameState, playerId: string, action: GameAct
       declineReroll(state, playerId);
       break;
     case "USE_LIGHTHOUSE":
-      handleUseLighthouse(state, playerId, action.discardInstanceId);
+      useLighthouse(state, playerId, action.discardInstanceId);
+      break;
+    case "SKIP_LIGHTHOUSE":
+      skipLighthouse(state, playerId);
       break;
     default:
       break;
   }
   maybeAdvanceAfterDeferredEventRoll(state);
-  resolveAiRerollQueue(state);
   maybeAdvancePhase(state);
 }
 
@@ -414,30 +405,16 @@ function maybeAdvancePhase(_state: GameState): void {
   // Day/night end only via explicit ADVANCE_PHASE so instants remain playable at 0 actions.
 }
 
-function handleUseLighthouse(state: GameState, playerId: string, discardInstanceId: string): void {
-  if (state.phase !== "manifest" || state.presentationHold?.at !== "manifest") {
-    throw new Error("Lighthouse can only be used during manifest");
-  }
-  const player = state.players.find((p) => p.id === playerId);
-  if (!player) throw new Error("Player not found");
-  const hasLighthouse = player.persistentCards.some((c) => getCard(c.cardId).effectId === "lighthouse");
-  if (!hasLighthouse) throw new Error("No Lighthouse in play");
-  const discard = player.hand.find((c) => c.instanceId === discardInstanceId);
-  if (!discard) throw new Error("Card not in hand");
-  player.hand = player.hand.filter((c) => c.instanceId !== discardInstanceId);
-  state.actionDiscard.push(discard);
-  state.modifiers.manifestDamageBlock += 1;
-  log(state, `${player.name} uses Lighthouse to block 1 manifest damage.`);
-  state.presentationHold = { at: "manifest", preview: computeManifestPreview(state) };
-}
-
 export function applyAction(state: GameState, playerId: string, action: GameAction): void {
   if (state.phase === "game_over") return;
   const isIntroAck = action.type === "ACK_GAME_INTRO";
-  if (
+  if (hasPendingLighthouse(state)) {
+    if (action.type !== "USE_LIGHTHOUSE" && action.type !== "SKIP_LIGHTHOUSE" && !isIntroAck) {
+      throw new Error("Resolve lighthouse offer first");
+    }
+  } else if (
     state.presentationHold &&
     action.type !== "ACK_PRESENTATION" &&
-    action.type !== "USE_LIGHTHOUSE" &&
     !isIntroAck
   ) {
     throw new Error("Finish presentation first");
@@ -537,6 +514,9 @@ function handleAckGameIntro(state: GameState, playerId: string): void {
 function handleAckPresentation(state: GameState, playerId: string): void {
   const human = state.players.find((p) => p.id === playerId);
   if (!human?.isHuman) throw new Error("Only human can acknowledge presentation");
+  if (hasPendingLighthouse(state)) {
+    throw new Error("Resolve lighthouse offer first");
+  }
   const hold = state.presentationHold;
   if (!hold) return;
 
@@ -573,6 +553,18 @@ function handleAckPresentation(state: GameState, playerId: string): void {
     return;
   }
 
+  if (hold.at === "post_card_roll") {
+    resumeCardRollEffect(state, {
+      effectId: hold.effectId,
+      playerId: hold.playerId,
+      cardInstanceId: hold.cardInstanceId,
+      targetId: hold.targetId,
+    });
+    state.presentationHold = null;
+    stampSoloController(state);
+    return;
+  }
+
   if (hold.at === "post_draw") {
     state.presentationHold = null;
     tryAdvanceFromDrawPhase(state);
@@ -580,8 +572,10 @@ function handleAckPresentation(state: GameState, playerId: string): void {
   }
 
   if (hold.at === "post_rest") {
+    const personal = !!hold.playerId;
     state.presentationHold = null;
-    advancePhase(state);
+    // Personal 2p Rest must not advance; group Rest advances after the popup sequence.
+    if (!personal) advancePhase(state);
   }
 }
 
@@ -660,7 +654,9 @@ function handlePlayTeamCard(
       playerId: ownerPlayerId,
       cardInstanceId,
       targetId,
-    }) ?? null;
+    }) ??
+    state.pendingChoice ??
+    null;
   stampSoloController(state);
 
   if (pickOptionId && state.pendingChoice?.kind === "pick_one") {
@@ -684,7 +680,9 @@ function handleConfirmAiPlay(state: GameState, playerId: string): void {
       state,
       playerId: pending.playerId,
       cardInstanceId: pending.cardInstanceId,
-    }) ?? null;
+    }) ??
+    state.pendingChoice ??
+    null;
   stampSoloController(state);
 }
 
@@ -729,16 +727,12 @@ function handleRestVote(state: GameState, playerId: string, vote: boolean): void
   player.restVote = true;
   log(state, `${player.name} votes to Rest.`);
 
-  // Solo: one human Rest rests the whole table, then present draws before advancing.
+  // Solo: one human Rest rests the whole table, then present rewards before advancing.
   if (state.mode === "solo") {
     for (const p of state.players) p.restVote = true;
     const reward = applyGroupRestRewards(state);
     applySlothAfterRest(state);
-    if (reward === "draw") {
-      state.presentationHold = { at: "post_rest", reward: "draw" };
-    } else {
-      advancePhase(state);
-    }
+    state.presentationHold = { at: "post_rest", reward };
     return;
   }
 
@@ -757,6 +751,13 @@ function handleRestVote(state: GameState, playerId: string, vote: boolean): void
     } else {
       gainEnergy(player, 1, state);
       log(state, `${player.name} Rests and gains 1 energy.`);
+      if (player.isHuman) {
+        state.presentationHold = {
+          at: "post_rest",
+          reward: "energy",
+          playerId: player.id,
+        };
+      }
     }
     return;
   }
@@ -766,11 +767,7 @@ function handleRestVote(state: GameState, playerId: string, vote: boolean): void
   if (eligible.length > 0 && eligible.every((p) => p.restVote === true)) {
     const reward = applyGroupRestRewards(state);
     applySlothAfterRest(state);
-    if (reward === "draw") {
-      state.presentationHold = { at: "post_rest", reward: "draw" };
-    } else {
-      advancePhase(state);
-    }
+    state.presentationHold = { at: "post_rest", reward };
   }
 }
 
@@ -859,6 +856,7 @@ export function toPublicState(state: GameState): PublicGameState {
     currentDncPhases: getDncPhases(state) as DncCyclePhase[],
     currentDncPhaseWeights: getDncPhaseWeights(state),
     pendingRerollPrompt: state.pendingRerollPrompt,
+    pendingLighthousePrompt: state.pendingLighthousePrompt,
     lobbyPossessedId: state.lobbyPossessedId,
     connectedHumanCount: state.players.filter((p) => p.isHuman && p.isConnected).length,
   };

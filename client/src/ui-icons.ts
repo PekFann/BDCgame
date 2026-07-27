@@ -1,2 +1,7 @@
 export const ENERGY_ICON = "/ui/Energy icon.png";
 export const FRIENDSHIP_ICON = "/ui/Friendship icon.png";
+export const POSSESSED_HEALTH_ICON = "/ui/possessed health icon.png";
+export const CARD_ICON = "/ui/Card icon.png";
+export const DAY_REST_BUTTON = "/ui/day rest button.png";
+export const NIGHT_REST_BUTTON = "/ui/night rest button.png";
+export const END_PHASE_BUTTON = "/ui/end phase button.png";

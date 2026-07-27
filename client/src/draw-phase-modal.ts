@@ -6,8 +6,13 @@ import {
   snapshotFriendshipBeforeChoice,
 } from "./friendship-vfx.js";
 import { closeAnimatedModal, forceCloseModal, openAnimatedModal } from "./modal-animations.js";
+import { CARD_ICON, ENERGY_ICON, FRIENDSHIP_ICON } from "./ui-icons.js";
 
 type SendFn = (action: GameAction) => void;
+
+const CARD_ICON_URL = encodeURI(CARD_ICON);
+const ENERGY_ICON_URL = encodeURI(ENERGY_ICON);
+const FRIENDSHIP_ICON_URL = encodeURI(FRIENDSHIP_ICON);
 
 let modalEl: HTMLElement | null = null;
 let panelEl: HTMLElement | null = null;
@@ -33,19 +38,30 @@ function ensureDrawModal(): { root: HTMLElement; panel: HTMLElement } {
   return { root: modalEl, panel: panelEl };
 }
 
+function rewardMarkup(iconUrl: string, alt: string): string {
+  return `
+    <span class="draw-choice-reward">
+      <img class="draw-choice-icon" src="${iconUrl}" alt="${alt}" />
+      <span>+1</span>
+    </span>
+  `;
+}
+
 function populateDrawButtons(
   panel: HTMLElement,
   pub: PublicGameState,
   humanPlayerId: string,
-  mode: FriendshipVfxMode,
+  _mode: FriendshipVfxMode,
   send: SendFn
 ): void {
   const buttons = panel.querySelector(".card-modal-buttons")!;
   buttons.innerHTML = "";
-  const addBtn = (label: string, choice: "card_and_energy" | "friendship") => {
+  const addBtn = (html: string, choice: "card_and_energy" | "friendship", ariaLabel: string) => {
     const btn = document.createElement("button");
-    btn.className = "btn";
-    btn.textContent = label;
+    btn.type = "button";
+    btn.className = "btn draw-choice-btn";
+    btn.setAttribute("aria-label", ariaLabel);
+    btn.innerHTML = html;
     btn.onclick = () => {
       if (choice === "friendship") {
         markPendingDrawFriendshipGain(1);
@@ -56,8 +72,12 @@ function populateDrawButtons(
     };
     buttons.appendChild(btn);
   };
-  addBtn("Draw card + energy", "card_and_energy");
-  addBtn("Gain friendship", "friendship");
+  addBtn(
+    `${rewardMarkup(CARD_ICON_URL, "Card")}${rewardMarkup(ENERGY_ICON_URL, "Energy")}`,
+    "card_and_energy",
+    "Draw card + energy"
+  );
+  addBtn(rewardMarkup(FRIENDSHIP_ICON_URL, "Friendship"), "friendship", "Gain friendship");
 }
 
 export function closeDrawPhaseModal(): void {

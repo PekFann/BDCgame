@@ -445,6 +445,14 @@ export function canPlayCard(state: GameState, player: PlayerState, cardId: strin
   if (def.effectId === "talk_it_out" && state.demonRevealed) return false;
   if (def.effectId === "resurrection") return false;
   if (def.effectId === "time_travel" && state.lastDiceRoll === null) return false;
+  if (def.effectId === "fast_and_pray") {
+    if (player.hand.length < 2) return false;
+    if (legalDamageTargets(state).length === 0) return false;
+  }
+  if (def.effectId === "contract_breaker") {
+    if (state.possessedHp <= 0) return false;
+    if (legalDamageTargets(state).length === 0) return false;
+  }
   return true;
 }
 

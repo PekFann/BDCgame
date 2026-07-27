@@ -136,6 +136,12 @@ export interface PendingRerollPrompt {
   awaitingPlayerId: string | null;
 }
 
+export interface PendingLighthousePrompt {
+  queue: { playerId: string; isHuman: boolean; name: string }[];
+  queueIndex: number;
+  awaitingPlayerId: string | null;
+}
+
 export interface PendingCardRollResume {
   effectId: string;
   playerId: string;
@@ -145,10 +151,18 @@ export interface PendingCardRollResume {
 
 export type PresentationHold =
   | { at: "post_draw"; choice: DrawChoice; playerId?: string }
-  | { at: "post_rest"; reward: "draw" | "energy" }
+  | { at: "post_rest"; reward: "draw" | "energy"; playerId?: string }
   | { at: "manifest"; preview: ManifestPreview }
   | { at: "post_trigger_roll"; roll: number; outcome: TriggerOutcome; eventCardId?: string }
-  | { at: "post_event_roll"; roll: number; effectId: string; playerId: string };
+  | { at: "post_event_roll"; roll: number; effectId: string; playerId: string }
+  | {
+      at: "post_card_roll";
+      roll: number;
+      effectId: string;
+      playerId: string;
+      cardInstanceId?: string;
+      targetId?: string;
+    };
 
 export interface GameModifiers {
   maxHandSize: number;
@@ -211,6 +225,7 @@ export interface GameState {
   pendingCardRollResume: PendingCardRollResume | null;
   pendingPostTriggerAdvance: boolean;
   pendingRerollTimeTravelId: string | null;
+  pendingLighthousePrompt: PendingLighthousePrompt | null;
   lobbyPossessedId: string | null;
 }
 
@@ -269,6 +284,7 @@ export interface PublicGameState {
   currentDncPhases: DncCyclePhase[];
   currentDncPhaseWeights: number[];
   pendingRerollPrompt: PendingRerollPrompt | null;
+  pendingLighthousePrompt: PendingLighthousePrompt | null;
   lobbyPossessedId: string | null;
   connectedHumanCount: number;
 }
@@ -314,7 +330,8 @@ export type GameAction =
   | { type: "ACK_GAME_INTRO" }
   | { type: "ACCEPT_REROLL" }
   | { type: "DECLINE_REROLL" }
-  | { type: "USE_LIGHTHOUSE"; discardInstanceId: string };
+  | { type: "USE_LIGHTHOUSE"; discardInstanceId: string }
+  | { type: "SKIP_LIGHTHOUSE" };
 
 export interface RoomInfo {
   id: string;

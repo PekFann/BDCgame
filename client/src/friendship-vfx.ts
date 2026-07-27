@@ -1,6 +1,7 @@
 // Phone + solo only — do not import from tv.ts.
 import type { DrawChoice, PublicGameState } from "../../shared/types.js";
-import { ENERGY_ICON, FRIENDSHIP_ICON } from "./ui-icons.js";
+import { playMagicPopSound } from "./audio.js";
+import { CARD_ICON, ENERGY_ICON, FRIENDSHIP_ICON } from "./ui-icons.js";
 
 export type FriendshipVfxMode = "solo" | "phone";
 
@@ -10,10 +11,12 @@ const DRAW_FLOATER_MS = 900;
 const AI_DRAW_SEQUENCE_GAP_MS = 800;
 const FRIENDSHIP_ICON_URL = encodeURI(FRIENDSHIP_ICON);
 const ENERGY_ICON_URL = encodeURI(ENERGY_ICON);
+const CARD_ICON_URL = encodeURI(CARD_ICON);
 
 /** Preload friendship icon so burst particles render immediately. */
 new Image().src = FRIENDSHIP_ICON_URL;
 new Image().src = ENERGY_ICON_URL;
+new Image().src = CARD_ICON_URL;
 
 /** Option IDs that grant friendship — snapshot before send so VFX detects the gain. */
 export const FRIENDSHIP_GAIN_OPTION_IDS = new Set(["friendship", "friendship2", "friendship_all"]);
@@ -166,6 +169,7 @@ function runFriendshipGainVfxForPlayer(
 ): void {
   if (amount <= 0) return;
 
+  playMagicPopSound();
   const layer = ensureVfxLayer();
   const { rect, element } = resolveAnchorForPlayer(playerId, mode, humanPlayerId);
   const count = Math.min(24, Math.max(8, amount * 6));
@@ -223,7 +227,7 @@ function drawChoiceFloaterMarkup(choice: DrawChoice): string {
     return `<span class="draw-reward-float-part">+1 <img class="draw-reward-float-icon" src="${FRIENDSHIP_ICON_URL}" alt="Friendship" /></span>`;
   }
   return `
-    <span class="draw-reward-float-part">+1 <span class="draw-reward-float-card" aria-hidden="true">🂠</span></span>
+    <span class="draw-reward-float-part">+1 <img class="draw-reward-float-icon" src="${CARD_ICON_URL}" alt="Card" /></span>
     <span class="draw-reward-float-part">+1 <img class="draw-reward-float-icon" src="${ENERGY_ICON_URL}" alt="Energy" /></span>
   `;
 }
@@ -271,6 +275,60 @@ export async function runAiDrawChoiceSequence(
     // Sync baseline so later team checks don't re-fire this gain.
     prevFriendshipByPlayer.set(player.id, player.friendship);
     showDrawChoiceFloater(player.id, player.drawChoice, humanPlayerId);
+    await sleep(AI_DRAW_SEQUENCE_GAP_MS);
+  }
+}
+
+function restRewardFloaterMarkup(reward: "draw" | "energy"): string {
+  if (reward === "energy") {
+    return `<span class="draw-reward-float-part">+1 <img class="draw-reward-float-icon" src="${ENERGY_ICON_URL}" alt="Energy" /></span>`;
+  }
+  return `<span class="draw-reward-float-part">+1 <img class="draw-reward-float-icon" src="${CARD_ICON_URL}" alt="Card" /></span>`;
+}
+
+export function showRestRewardFloater(
+  playerId: string,
+  reward: "draw" | "energy",
+  _humanPlayerId: string
+): void {
+  const layer = ensureVfxLayer();
+  const { rect, element } = resolveRosterRowAnchor(playerId);
+
+  if (reward === "energy") {
+    const energyStat =
+      (element?.querySelector(".roster-stat[title='Energy']") as HTMLElement | null) ??
+      (document.querySelector(
+        `#board .player-roster-row[data-player-id="${playerId}"] .roster-stat[title='Energy']`
+      ) as HTMLElement | null);
+    if (energyStat) pulseRosterStat(energyStat);
+  }
+
+  const el = document.createElement("div");
+  el.className = "draw-reward-float";
+  el.innerHTML = restRewardFloaterMarkup(reward);
+  el.style.left = `${rect.left + rect.width / 2}px`;
+  el.style.top = `${rect.top + rect.height * 0.55}px`;
+  layer.appendChild(el);
+  requestAnimationFrame(() => el.classList.add("draw-reward-float--active"));
+  setTimeout(() => el.remove(), DRAW_FLOATER_MS + 50);
+}
+
+/** Show each player's Rest reward one-by-one (draw-phase floater style). */
+export async function runRestRewardSequence(
+  pub: PublicGameState,
+  reward: "draw" | "energy",
+  humanPlayerId: string,
+  playerIds?: string[]
+): Promise<void> {
+  const ids =
+    playerIds ??
+    [...pub.players]
+      .sort((a, b) => a.slot - b.slot)
+      .map((p) => p.id);
+
+  for (const playerId of ids) {
+    if (!pub.players.some((p) => p.id === playerId)) continue;
+    showRestRewardFloater(playerId, reward, humanPlayerId);
     await sleep(AI_DRAW_SEQUENCE_GAP_MS);
   }
 }

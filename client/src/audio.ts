@@ -1,33 +1,82 @@
 const CARD_DRAW_SRC = "/Audios/cardDraw.wav";
-const DICE_ROLL_SRC = "/Audios/Dice Roll 01.mp3";
+const DICE_ROLL_SRC = encodeURI("/Audios/Dice Roll 01.mp3");
+const MAGIC_POP_SRC = encodeURI("/Audios/Magic Pop 01.mp3");
+const MAGIC_POTION_SRC = encodeURI("/Audios/Magic Potion 02 Using.wav");
+const DEMON_ATTACK_SRC = encodeURI("/Audios/Demon Attack 01.mp3");
 
 let cardDrawAudio: HTMLAudioElement | null = null;
 let diceRollAudio: HTMLAudioElement | null = null;
+let magicPopAudio: HTMLAudioElement | null = null;
+let magicPotionAudio: HTMLAudioElement | null = null;
+let demonAttackAudio: HTMLAudioElement | null = null;
 
-export function playCardDrawSound(): void {
+function playCachedSound(
+  getCached: () => HTMLAudioElement | null,
+  setCached: (a: HTMLAudioElement) => void,
+  src: string
+): void {
   try {
-    if (!cardDrawAudio) {
-      cardDrawAudio = new Audio(CARD_DRAW_SRC);
-      cardDrawAudio.preload = "auto";
+    let cached = getCached();
+    if (!cached) {
+      cached = new Audio(src);
+      cached.preload = "auto";
+      setCached(cached);
     }
-    const clip = cardDrawAudio.cloneNode() as HTMLAudioElement;
+    const clip = cached.cloneNode() as HTMLAudioElement;
     void clip.play();
   } catch {
     // Autoplay blocked or audio unavailable — silent fail.
   }
 }
 
+export function playCardDrawSound(): void {
+  playCachedSound(
+    () => cardDrawAudio,
+    (a) => {
+      cardDrawAudio = a;
+    },
+    CARD_DRAW_SRC
+  );
+}
+
 export function playDiceRollSound(): void {
-  try {
-    if (!diceRollAudio) {
-      diceRollAudio = new Audio(DICE_ROLL_SRC);
-      diceRollAudio.preload = "auto";
-    }
-    const clip = diceRollAudio.cloneNode() as HTMLAudioElement;
-    void clip.play();
-  } catch {
-    // Autoplay blocked or audio unavailable — silent fail.
-  }
+  playCachedSound(
+    () => diceRollAudio,
+    (a) => {
+      diceRollAudio = a;
+    },
+    DICE_ROLL_SRC
+  );
+}
+
+export function playMagicPopSound(): void {
+  playCachedSound(
+    () => magicPopAudio,
+    (a) => {
+      magicPopAudio = a;
+    },
+    MAGIC_POP_SRC
+  );
+}
+
+export function playMagicPotionSound(): void {
+  playCachedSound(
+    () => magicPotionAudio,
+    (a) => {
+      magicPotionAudio = a;
+    },
+    MAGIC_POTION_SRC
+  );
+}
+
+export function playDemonAttackSound(): void {
+  playCachedSound(
+    () => demonAttackAudio,
+    (a) => {
+      demonAttackAudio = a;
+    },
+    DEMON_ATTACK_SRC
+  );
 }
 
 const DICE_ROLL_SOUND_DELAY_MS = 1000;

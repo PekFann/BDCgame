@@ -1,4 +1,5 @@
 import type { ManifestPreview } from "../../shared/types.js";
+import { playDemonAttackSound } from "./audio.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -26,6 +27,7 @@ export async function runManifestAnimation(
     return;
   }
 
+  playDemonAttackSound();
   demon.classList.add("manifest-lunge");
   // Apply hit almost immediately (was 420ms); toast wait already shortened by 500ms.
   await sleep(0);

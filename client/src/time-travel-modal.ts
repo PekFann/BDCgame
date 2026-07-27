@@ -56,7 +56,10 @@ function populatePanel(
 
   let message: string;
   if (isOwnOffer) {
-    message = `You rolled <strong>${prompt.roll}</strong> on the ${contextLabel}. Use Time Travel to reroll? (Discard 1 card.)`;
+    const isOwnRoll = prompt.rollerId === awaiting.id;
+    message = isOwnRoll
+      ? `You rolled <strong>${prompt.roll}</strong> on the ${contextLabel}. Use Time Travel to reroll? (Discard 1 card.)`
+      : `You can use Time Travel to reroll <strong>${rolledBy}</strong>'s ${contextLabel} of <strong>${prompt.roll}</strong>. (Discard 1 card.)`;
   } else {
     message = `<strong>${awaiting.name}</strong> can use Time Travel to reroll <strong>${rolledBy}</strong>'s ${contextLabel} of <strong>${prompt.roll}</strong>. Allow it? (${awaiting.name} discards 1 card.)`;
   }
@@ -95,7 +98,9 @@ export function refreshTimeTravelModal(
   }
 
   if (
-    (prompt.context === "trigger" || prompt.context === "event_effect") &&
+    (prompt.context === "trigger" ||
+      prompt.context === "event_effect" ||
+      prompt.context === "card") &&
     !isRerollDiceAnimReady(pub)
   ) {
     if (!root.hidden) closeAnimatedModal(root, panel, () => {});

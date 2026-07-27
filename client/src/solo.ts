@@ -48,6 +48,7 @@ import { refreshDemonTargetModal, resetDemonTargetModal } from "./demon-target-m
 import { refreshHandDiscardModal, resetHandDiscardModal } from "./hand-discard-modal.js";
 import { refreshCallForHelpModal, resetCallForHelpModal } from "./call-for-help-modal.js";
 import { refreshCoffeeBreakModal, resetCoffeeBreakModal } from "./coffee-break-modal.js";
+import { refreshLighthouseModal, resetLighthouseModal } from "./lighthouse-modal.js";
 import { playBoardDamageVfx, resetBoardDamageVfx } from "./board-damage-vfx.js";
 import { initFullscreenButton } from "./fullscreen.js";
 import {
@@ -55,6 +56,11 @@ import {
   resetFriendshipVfxTracking,
   scheduleTeamFriendshipGainVfx,
 } from "./friendship-vfx.js";
+import {
+  ensurePossessedHealBaseline,
+  resetPossessedHealVfxTracking,
+  schedulePossessedHealVfx,
+} from "./heal-vfx.js";
 import { isInputLocked } from "./input-lock.js";
 import { handlePresentationUpdate, resetPresentationLock } from "./phase-orchestrator.js";
 import { refreshPhaseToast, resetPhaseToast } from "./phase-toast.js";
@@ -146,6 +152,9 @@ function closeStalePhaseModals(pub: PublicGameState): void {
     resetTriggerRollModal();
     resetTimeTravelModal();
   }
+  if (pub.phase !== "manifest") {
+    resetLighthouseModal();
+  }
 }
 
 function renderBoardWithRoster(
@@ -169,6 +178,7 @@ function renderBoardWithRoster(
     renderBoardEventChoice(board, pub, priv, humanPlayerId, send);
   }
   scheduleTeamFriendshipGainVfx(() => client.publicState, humanPlayerId, "solo");
+  schedulePossessedHealVfx(() => client.publicState, "solo");
 }
 
 function renderFooterChrome(
@@ -282,12 +292,17 @@ function refreshGameplayModals(
 ): void {
   refreshCardModalIfOpen(modalCtx);
   refreshDrawPhaseModal(pub, humanPlayerId, send, "solo");
-  refreshTriggerRollModal(pub, priv, send, () => client.publicState);
+  refreshTriggerRollModal(pub, priv, send, () => client.publicState, (latestPub) => {
+    const latestPriv = client.privateState ?? undefined;
+    if (!latestPriv) return;
+    refreshTimeTravelModal(latestPub, latestPriv, send);
+  });
   refreshTimeTravelModal(pub, priv, send);
   refreshHandDiscardModal(pub, priv, send, humanPlayerId);
   refreshCallForHelpModal(pub, send, humanPlayerId);
   refreshCoffeeBreakModal(pub, send, humanPlayerId);
   refreshDemonTargetModal(pub, priv, send);
+  refreshLighthouseModal(pub, priv, send);
   refreshPhaseToast(pub);
 }
 
@@ -378,6 +393,7 @@ function renderGameUI(): void {
   setGameIntroSend(send);
   const humanPlayerId = getHumanPlayerId(pub);
   ensureFriendshipBaseline(pub, humanPlayerId);
+  ensurePossessedHealBaseline(pub);
   const viewingId = resolveViewingPlayerId(pub, humanPlayerId);
   const modalCtx = { pub, priv, send, humanPlayerId, ownerPlayerId: viewingId };
   const handEl = document.getElementById("hand")!;
@@ -394,6 +410,7 @@ function renderGameUI(): void {
         resetPresentationLock();
         resetTriggerRollModal();
         resetTimeTravelModal();
+        resetLighthouseModal();
       }
       lastRenderedCycle = pub.cycle;
     }
@@ -418,6 +435,9 @@ function renderGameUI(): void {
     renderPhaseActions(actionsEl, pub, priv, send, { humanPlayerId });
 
     const { handCtx } = renderSelectedHand(pub, priv, humanPlayerId, send);
+
+    // Always refresh trigger/TT promptly so dice-anim completion can open TT / outcome UI.
+    refreshGameplayModals(pub, priv, send, humanPlayerId, modalCtx);
 
     if (pub.presentationHold) {
       void handlePresentationUpdate(pub, {
@@ -484,8 +504,6 @@ function renderGameUI(): void {
           ownerPlayerId: latestViewing,
         });
       });
-    } else {
-      refreshGameplayModals(pub, priv, send, humanPlayerId, modalCtx);
     }
   } finally {
     refreshGameStartModal(pub);
@@ -499,10 +517,12 @@ async function init() {
   resetDrawAnimationState();
   resetTriggerRollModal();
   resetTimeTravelModal();
+  resetLighthouseModal();
   resetDemonTargetModal();
   resetPhaseToast();
   lastRenderedCycle = 0;
   resetFriendshipVfxTracking();
+  resetPossessedHealVfxTracking();
   drawIdleRetryScheduled = false;
   selectedPlayerId = "";
   initFullscreenButton();
@@ -614,9 +634,11 @@ async function init() {
       resetHandDiscardModal();
       resetCallForHelpModal();
       resetCoffeeBreakModal();
+      resetLighthouseModal();
       resetBoardDamageVfx();
       resetPhaseToast();
       resetFriendshipVfxTracking();
+      resetPossessedHealVfxTracking();
       roomId = await createSoloRoom();
       await client.connect({ roomId, role: "solo", slot: 1, name: "You" });
       client.startGame(possessedId, playerCount);

@@ -109,7 +109,7 @@ a:hover {
 
 .landing h1 {
   font-family: var(--font-display);
-  font-size: 2rem;
+  font-size: 2.5rem;
   font-weight: 600;
   letter-spacing: 0.04em;
   margin-bottom: 0.5rem;
@@ -699,7 +699,7 @@ a:hover {
 
 .log-panel h3 {
   margin: 0 0 0.35rem;
-  font-size: 0.85rem;
+  font-size: 1.1rem;
   flex-shrink: 0;
 }
 
@@ -843,7 +843,7 @@ a:hover {
 .phase-toast strong {
   font-family: var(--font-display);
   color: var(--gold);
-  font-size: 1.05rem;
+  font-size: 1.35rem;
   letter-spacing: 0.03em;
 }
 
@@ -1169,6 +1169,26 @@ a:hover {
 
 .trigger-roll-outcome {
   margin: 0.75rem 0 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #f5eef1;
+  line-height: 1.35;
+}
+
+.trigger-roll-outcome strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: #fd254e;
+  letter-spacing: 0.01em;
+}
+
+.trigger-roll-outcome .card-modal-effect {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #f5eef1;
 }
 
 .trigger-roll-detail {
@@ -1622,6 +1642,41 @@ a:hover {
   box-shadow: none;
 }
 
+.btn.btn-rest-img {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 12px;
+  cursor: pointer;
+  line-height: 0;
+  flex-shrink: 0;
+}
+
+.btn.btn-rest-img img {
+  display: block;
+  width: clamp(72px, 14vw, 110px);
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+}
+
+.btn.btn-rest-img:hover:not(:disabled):not(.disabled) {
+  transform: translateY(-1px) scale(1.03);
+  filter: brightness(1.06);
+}
+
+.btn.btn-rest-img.disabled,
+.btn.btn-rest-img:disabled {
+  filter: grayscale(1);
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .btn.btn-circle.disabled,
 .btn.btn-circle:disabled {
   opacity: 0.45;
@@ -1666,7 +1721,7 @@ a:hover {
 
 .compact-status h2 {
   margin: 0 0 0.35rem;
-  font-size: 1rem;
+  font-size: 1.3rem;
 }
 
 .compact-status .status-grid {
@@ -1686,7 +1741,7 @@ a:hover {
 
 .hand-panel h3 {
   margin: 0 0 0.35rem;
-  font-size: 0.85rem;
+  font-size: 1.1rem;
   flex-shrink: 0;
 }
 
@@ -1838,6 +1893,7 @@ a:hover {
   max-width: min(92vw, 360px);
   box-shadow: var(--shadow-deep);
   backdrop-filter: blur(var(--panel-blur));
+  text-align: center;
 }
 
 .draw-phase-panel .card-modal-title {
@@ -1846,6 +1902,61 @@ a:hover {
 
 .draw-phase-panel .card-modal-effect {
   margin-bottom: 1rem;
+}
+
+/* Choice-style popups: center titles (not card-play .card-modal-layout). */
+.draw-phase-panel,
+.time-travel-panel,
+.lighthouse-panel,
+.lighthouse-discard-panel,
+.trigger-roll-panel,
+.hand-discard-panel,
+.coffee-break-panel,
+.call-for-help-panel,
+.demon-target-panel,
+.game-start-panel,
+.discard-pile-panel,
+.ai-play-panel {
+  text-align: center;
+}
+
+.draw-phase-panel .card-modal-title,
+.time-travel-panel .card-modal-title,
+.lighthouse-panel .card-modal-title,
+.lighthouse-discard-panel .card-modal-title,
+.trigger-roll-panel .card-modal-title,
+.hand-discard-panel .card-modal-title,
+.coffee-break-panel .card-modal-title,
+.call-for-help-panel .card-modal-title,
+.demon-target-panel .card-modal-title,
+.game-start-panel .card-modal-title,
+.discard-pile-panel .card-modal-title,
+.ai-play-panel .card-modal-title {
+  text-align: center;
+}
+
+.draw-choice-btn {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.draw-choice-reward {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.draw-choice-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  display: inline-block;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.55));
 }
 
 .card-modal-layout {
@@ -1883,7 +1994,7 @@ a:hover {
 .card-modal-title {
   margin: 0 0 0.35rem;
   font-family: var(--font-display);
-  font-size: 1.1rem;
+  font-size: 1.4rem;
   color: var(--gold);
   letter-spacing: 0.03em;
 }
@@ -2097,7 +2208,7 @@ a:hover {
 .tv-title {
   margin: 0 0 0.35rem;
   font-family: var(--font-display);
-  font-size: 0.9rem;
+  font-size: 1.15rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   color: var(--gold);
@@ -2714,11 +2825,6 @@ button.lighthouse-attachment.is-active:hover {
   filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.65));
 }
 
-.draw-reward-float-card {
-  font-size: 1.1rem;
-  line-height: 1;
-}
-
 @keyframes drawRewardFloat {
   from {
     opacity: 1;
@@ -2736,6 +2842,14 @@ button.lighthouse-attachment.is-active:hover {
 
 .card-slot.possessed.possessed--friendship-hit img {
   filter: brightness(1.2);
+}
+
+.card-slot.possessed.possessed--heal-hit {
+  animation: possessedFriendshipPulse 0.6s ease-out;
+}
+
+.card-slot.possessed.possessed--heal-hit img {
+  filter: brightness(1.25);
 }
 
 .roster-stat.roster-stat--friendship-hit {

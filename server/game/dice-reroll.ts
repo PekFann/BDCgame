@@ -48,13 +48,24 @@ function finalizeDiceRoll(state: GameState): void {
   if (state.pendingCardRollResume) {
     const resume = state.pendingCardRollResume;
     state.pendingCardRollResume = null;
-    const roller = state.diceRollerId ? getPlayer(state, state.diceRollerId) : null;
-    if (roller?.isHuman && isEventRollEffect(resume.effectId) && state.lastDiceRoll !== null) {
+    const hasHuman = state.players.some((p) => p.isHuman);
+    if (hasHuman && isEventRollEffect(resume.effectId) && state.lastDiceRoll !== null) {
       state.presentationHold = {
         at: "post_event_roll",
         roll: state.lastDiceRoll,
         effectId: resume.effectId,
         playerId: resume.playerId,
+      };
+      return;
+    }
+    if (hasHuman && state.lastDiceRoll !== null) {
+      state.presentationHold = {
+        at: "post_card_roll",
+        roll: state.lastDiceRoll,
+        effectId: resume.effectId,
+        playerId: resume.playerId,
+        cardInstanceId: resume.cardInstanceId,
+        targetId: resume.targetId,
       };
       return;
     }
@@ -101,14 +112,18 @@ function pickAiDiscardId(player: { hand: { instanceId: string; cardId: string }[
   return player.hand[0]?.instanceId ?? null;
 }
 
-export function executeReroll(state: GameState, playerId: string): void {
+export function executeReroll(
+  state: GameState,
+  playerId: string,
+  context: PendingRerollPrompt["context"] = "trigger"
+): void {
   const roll = rollD6();
   state.lastDiceRoll = roll;
   state.diceRollerId = playerId;
   log(state, `${getPlayer(state, playerId).name} rerolls: ${roll}.`);
   state.pendingRerollPrompt = null;
   state.pendingRerollTimeTravelId = null;
-  finalizeDiceRoll(state);
+  startRerollOffers(state, playerId, context);
 }
 
 export function completeRerollAfterDiscard(
@@ -116,8 +131,9 @@ export function completeRerollAfterDiscard(
   playerId: string,
   discardIds: string[]
 ): void {
+  const context = state.pendingRerollPrompt?.context ?? "trigger";
   discardFromHand(state, getPlayer(state, playerId), discardIds);
-  executeReroll(state, playerId);
+  executeReroll(state, playerId, context);
 }
 
 function consumeTimeTravel(state: GameState, playerId: string): void {
@@ -147,9 +163,10 @@ export function acceptReroll(state: GameState, actingHumanId: string): void {
 
   consumeTimeTravel(state, targetId);
   const playerAfter = getPlayer(state, targetId);
+  const context = prompt.context;
 
   if (playerAfter.hand.length === 0) {
-    executeReroll(state, targetId);
+    executeReroll(state, targetId, context);
     return;
   }
 
@@ -168,7 +185,7 @@ export function acceptReroll(state: GameState, actingHumanId: string): void {
   if (discardId) {
     completeRerollAfterDiscard(state, targetId, [discardId]);
   } else {
-    executeReroll(state, targetId);
+    executeReroll(state, targetId, context);
   }
 }
 

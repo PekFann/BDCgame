@@ -36,6 +36,8 @@ const app = express();
 app.use(express.json());
 
 app.use("/assets", express.static(path.join(publicAssetsDir, "assets")));
+app.use("/Audios", express.static(path.join(publicAssetsDir, "Audios")));
+app.use("/ui", express.static(path.join(publicAssetsDir, "ui")));
 app.use(express.static(staticClientDir));
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));

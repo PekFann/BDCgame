@@ -25,12 +25,18 @@ import { refreshDemonTargetModal } from "./demon-target-modal.js";
 import { refreshHandDiscardModal } from "./hand-discard-modal.js";
 import { refreshCallForHelpModal } from "./call-for-help-modal.js";
 import { refreshCoffeeBreakModal } from "./coffee-break-modal.js";
+import { refreshLighthouseModal } from "./lighthouse-modal.js";
 import { initFullscreenButton } from "./fullscreen.js";
 import {
   ensureFriendshipBaseline,
   resetFriendshipVfxTracking,
   scheduleFriendshipGainVfx,
 } from "./friendship-vfx.js";
+import {
+  ensurePossessedHealBaseline,
+  resetPossessedHealVfxTracking,
+  schedulePossessedHealVfx,
+} from "./heal-vfx.js";
 import { isInputLocked } from "./input-lock.js";
 import { renderLobbyPanel } from "./lobby-ui.js";
 import {
@@ -108,6 +114,7 @@ export function initPlayerApp(config: PlayerAppConfig): GameClient {
 
     if (!pub.started) {
       resetFriendshipVfxTracking();
+      resetPossessedHealVfxTracking();
       setViewMode(false);
       void renderLobby(pub);
       return;
@@ -122,6 +129,7 @@ export function initPlayerApp(config: PlayerAppConfig): GameClient {
     if (!human) return;
 
     ensureFriendshipBaseline(pub, human.id);
+    ensurePossessedHealBaseline(pub);
 
     setViewMode(true);
     const send = (a: Parameters<typeof client.sendAction>[0]) => client.sendAction(a);
@@ -133,6 +141,7 @@ export function initPlayerApp(config: PlayerAppConfig): GameClient {
     const miniBoard = document.getElementById("mini-board")!;
     renderCompactStatus(miniBoard, pub, name, viewingId);
     scheduleFriendshipGainVfx(() => client.publicState, human.id, "phone");
+    schedulePossessedHealVfx(() => client.publicState, "phone");
     bindPlayerRoster(miniBoard, (playerId) => {
       selectedPlayerId = playerId;
       renderPhoneUI();
@@ -243,12 +252,17 @@ export function initPlayerApp(config: PlayerAppConfig): GameClient {
       });
       refreshCardModalIfOpen(modalCtx);
       refreshDrawPhaseModal(pub, human.id, send, "phone");
-      refreshTriggerRollModal(pub, priv, send, () => client.publicState);
+      refreshTriggerRollModal(pub, priv, send, () => client.publicState, (latestPub) => {
+        const latestPriv = client.privateState ?? undefined;
+        if (!latestPriv) return;
+        refreshTimeTravelModal(latestPub, latestPriv, send);
+      });
       refreshTimeTravelModal(pub, priv, send);
       refreshHandDiscardModal(pub, priv, send, human.id);
       refreshCallForHelpModal(pub, send, human.id);
       refreshCoffeeBreakModal(pub, send, human.id);
       refreshDemonTargetModal(pub, priv, send);
+      refreshLighthouseModal(pub, priv, send);
 
       if (pub.presentationHold) {
         void handlePresentationUpdate(pub, {
@@ -326,6 +340,7 @@ export function initPlayerApp(config: PlayerAppConfig): GameClient {
       refreshCallForHelpModal(pub, send, human.id);
       refreshCoffeeBreakModal(pub, send, human.id);
       refreshDemonTargetModal(pub, priv, send);
+      refreshLighthouseModal(pub, priv, send);
     });
   });
 

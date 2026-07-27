@@ -2,6 +2,7 @@ import type { CardInstance, GameAction, PrivateGameState, PublicGameState } from
 import cardsData from "../../data/cards.json";
 import { CARD_PICK_ONE_OPTIONS, isPickOneEffect } from "./card-play-options.js";
 import { DIRECT_FRIENDSHIP_EFFECT_IDS, isFriendshipGainOption, snapshotFriendshipBeforeChoice } from "./friendship-vfx.js";
+import { isHealGainOption, snapshotPossessedHpBeforeHeal } from "./heal-vfx.js";
 import { closeAnimatedModal, forceCloseModal, openAnimatedModal } from "./modal-animations.js";
 import { humanControlsPending, isBoardMountedEventPending } from "./pending-choice-ui.js";
 import { cardImg, cardName, getTeamHand } from "./ws-client.js";
@@ -13,6 +14,9 @@ type ModalMode = "preview" | "resolve";
 function snapshotIfFriendshipGain(pub: PublicGameState, humanPlayerId: string, optionId: string): void {
   if (isFriendshipGainOption(optionId)) {
     snapshotFriendshipBeforeChoice(pub, humanPlayerId);
+  }
+  if (isHealGainOption(optionId)) {
+    snapshotPossessedHpBeforeHeal(pub);
   }
 }
 
@@ -321,6 +325,9 @@ function renderModalButtons(
       () => {
         if (def?.effectId && DIRECT_FRIENDSHIP_EFFECT_IDS.has(def.effectId)) {
           snapshotFriendshipBeforeChoice(pub, humanPlayerId);
+        }
+        if (def?.effectId === "gifts") {
+          snapshotPossessedHpBeforeHeal(pub);
         }
         send(playCardAction(instanceId));
       },

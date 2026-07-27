@@ -1,6 +1,7 @@
 import { DNC, getCard } from "../../shared/cards.js";
 import type { GameState, Phase } from "../../shared/types.js";
 import { computeManifestPreview } from "./effects/primitives.js";
+import { startLighthouseOffers } from "./lighthouse.js";
 import { log } from "./util.js";
 
 export function getDncPhases(state: GameState): Phase[] {
@@ -77,6 +78,7 @@ function preparePhaseEntry(state: GameState, phase: Phase): void {
       break;
     case "manifest":
       state.presentationHold = { at: "manifest", preview: computeManifestPreview(state) };
+      startLighthouseOffers(state);
       break;
   }
 }

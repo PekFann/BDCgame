@@ -13,6 +13,7 @@ import {
   scheduleFriendshipGainVfx,
   scheduleTeamFriendshipGainVfx,
   runAiDrawChoiceSequence,
+  runRestRewardSequence,
   waitForFriendshipVfxComplete,
   type FriendshipVfxMode,
 } from "./friendship-vfx.js";
@@ -21,7 +22,9 @@ import {
   isTriggerRollPresentationRunning,
   runTriggerRollPresentationIfNeeded,
   runEventRollPresentationIfNeeded,
+  runCardRollPresentationIfNeeded,
   isEventRollOutcomePresented,
+  isCardRollOutcomePresented,
 } from "./trigger-roll-modal.js";
 import { getHandCardVisualClass, renderHand, type HandRenderContext } from "./ws-client.js";
 
@@ -48,8 +51,11 @@ function holdKey(pub: PublicGameState): string {
   if (h.at === "post_draw") {
     return `post_draw-${phaseTag}-${h.choice}-${h.playerId ?? ""}`;
   }
-  if (h.at === "post_rest") return `post_rest-${phaseTag}-${h.reward}`;
+  if (h.at === "post_rest") return `post_rest-${phaseTag}-${h.reward}-${h.playerId ?? ""}`;
   if (h.at === "post_event_roll") return `event-roll-${phaseTag}-${h.roll}-${h.effectId}`;
+  if (h.at === "post_card_roll") {
+    return `card-roll-${phaseTag}-${h.roll}-${h.effectId}-${h.playerId}`;
+  }
   return "";
 }
 
@@ -141,12 +147,19 @@ export async function handlePresentationUpdate(
   if (isPresenting) return ctx.prevHandIds;
 
   if (key === lastHoldKey) {
+    if (hold.at === "manifest" && pub.pendingLighthousePrompt) {
+      return ctx.prevHandIds;
+    }
     if (hold.at === "post_trigger_roll" && ctx.mode !== "tv") {
       if (isTriggerRollOutcomePresented(pub)) {
         return ctx.prevHandIds;
       }
     } else if (hold.at === "post_event_roll" && ctx.mode !== "tv") {
       if (isEventRollOutcomePresented(pub)) {
+        return ctx.prevHandIds;
+      }
+    } else if (hold.at === "post_card_roll" && ctx.mode !== "tv") {
+      if (isCardRollOutcomePresented(pub)) {
         return ctx.prevHandIds;
       }
     } else {
@@ -159,6 +172,9 @@ export async function handlePresentationUpdate(
 
   try {
     if (hold.at === "manifest") {
+      if (pub.pendingLighthousePrompt) {
+        return ctx.prevHandIds;
+      }
       while (isDrawAnimating()) {
         await sleep(50);
       }
@@ -217,6 +233,25 @@ export async function handlePresentationUpdate(
       return ctx.prevHandIds;
     }
 
+    if (hold.at === "post_card_roll") {
+      try {
+        if (ctx.mode !== "tv") {
+          while (isTriggerRollPresentationRunning()) {
+            await sleep(50);
+          }
+          const presented = await runCardRollPresentationIfNeeded(pub, ctx.send);
+          if (presented || isCardRollOutcomePresented(pub)) {
+            lastHoldKey = key;
+          }
+        }
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.warn("Card roll presentation failed:", err);
+        }
+      }
+      return ctx.prevHandIds;
+    }
+
     if (hold.at === "post_draw") {
       while (isDrawAnimating()) {
         await sleep(50);
@@ -261,13 +296,28 @@ export async function handlePresentationUpdate(
       while (isDrawAnimating()) {
         await sleep(50);
       }
-      if (hold.reward === "draw" && ctx.mode !== "tv") {
-        if (ctx.mode === "play" && ctx.humanPlayerId) {
-          await animatePlayerHandDraw(pub, ctx, ctx.humanPlayerId);
+      if (ctx.mode !== "tv") {
+        const sequenceIds = hold.playerId ? [hold.playerId] : undefined;
+        const humanId = ctx.humanPlayerId ?? "";
+        if (humanId) {
+          await runRestRewardSequence(
+            ctx.getPub?.() ?? pub,
+            hold.reward,
+            humanId,
+            sequenceIds
+          );
         } else {
-          for (const player of pub.players) {
-            await animatePlayerHandDraw(pub, ctx, player.id);
-            await sleep(250);
+          await sleep(600);
+        }
+
+        if (hold.reward === "draw") {
+          if (ctx.mode === "play" && ctx.humanPlayerId) {
+            await animatePlayerHandDraw(pub, ctx, ctx.humanPlayerId);
+          } else if (ctx.mode === "solo") {
+            for (const player of pub.players) {
+              await animatePlayerHandDraw(pub, ctx, player.id);
+              await sleep(250);
+            }
           }
         }
       } else if (hold.reward === "energy") {

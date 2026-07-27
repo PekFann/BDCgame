@@ -6,6 +6,10 @@ export default defineConfig({
   publicDir: resolve(__dirname, "public"),
   server: {
     port: 5173,
+    // Avoid Windows EBUSY crashes watching locked audio files in public/.
+    watch: {
+      ignored: ["**/public/Audios/**"],
+    },
     proxy: {
       "/api": "http://127.0.0.1:3000",
       "/ws": { target: "ws://127.0.0.1:3000", ws: true },

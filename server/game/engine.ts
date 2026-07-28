@@ -108,7 +108,7 @@ export function setupPlayers(state: GameState, count: number, humanSlot = 0): vo
   state.players = Array.from({ length: count }, (_, i) => ({
     id: randomUUID(),
     slot: i,
-    name: i === humanSlot ? "You" : `AI ${i + 1}`,
+    name: i === humanSlot ? "You" : `Player ${i + 1}`,
     isHuman: i === humanSlot,
     isConnected: true,
     energy: 5,
@@ -249,7 +249,7 @@ function applyActionInternal(state: GameState, playerId: string, action: GameAct
           state.players = state.players.slice(0, action.playerCount);
           for (const p of state.players) {
             if (!p.isHuman) {
-              p.name = `AI ${p.slot + 1}`;
+              p.name = `Player ${p.slot + 1}`;
               p.isConnected = true;
             }
           }
@@ -334,11 +334,14 @@ function applyActionInternal(state: GameState, playerId: string, action: GameAct
     }
     case "DISCARD_CARDS": {
       const ownerId = assertPendingController(state, playerId);
+      const pendingEffectId = state.pendingChoice?.cardId
+        ? getCard(state.pendingChoice.cardId).effectId
+        : undefined;
       if (hasPendingReroll(state) && state.pendingChoice?.kind === "discard_cards") {
         completeRerollAfterDiscard(state, ownerId, action.cardInstanceIds);
         state.pendingChoice = null;
       } else {
-        resolveDiscardEffect(state, ownerId, action.cardInstanceIds);
+        resolveDiscardEffect(state, ownerId, action.cardInstanceIds, pendingEffectId);
         if (state.pendingChoice?.kind === "discard_cards") {
           state.pendingChoice = null;
         }

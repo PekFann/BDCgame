@@ -335,8 +335,10 @@ export function resolveDiscardEffect(state: GameState, playerId: string, ids: st
   const player = getPlayer(state, playerId);
   const sourceCardId = state.pendingChoice?.cardId;
   const sourceInstanceId = state.pendingChoice?.cardInstanceId;
+  const sourceEffectId =
+    effectId ?? (sourceCardId ? getCard(sourceCardId).effectId : undefined);
   discardFromHand(state, player, ids);
-  if (effectId === "gifts" || state.log[state.log.length - 2]?.includes("Gifts")) {
+  if (sourceEffectId === "gifts") {
     healPossessed(state, 3, playerId, true);
   }
   if (effectId === "dealing_with_past" || ids.length >= 0) {

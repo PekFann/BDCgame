@@ -20,7 +20,7 @@ function ensureModal(): { root: HTMLElement; panel: HTMLElement } {
     <div class="card-modal-backdrop modal-overlay"></div>
     <div class="call-for-help-panel modal-panel">
       <h3 class="call-for-help-title card-modal-title"></h3>
-      <p class="call-for-help-hint card-modal-effect">Choose a card from the action discard pile.</p>
+      <p class="call-for-help-hint card-modal-effect">Choose a card from the Discard Pile.</p>
       <div class="call-for-help-grid"></div>
     </div>
   `;

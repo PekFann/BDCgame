@@ -1,5 +1,6 @@
 // Phone + solo only — do not import from tv.ts.
 import type { PublicGameState } from "../../shared/types.js";
+import cardsData from "../../data/cards.json";
 import { playMagicPotionSound } from "./audio.js";
 import { POSSESSED_HEALTH_ICON } from "./ui-icons.js";
 
@@ -11,6 +12,16 @@ const HEALTH_ICON_URL = encodeURI(POSSESSED_HEALTH_ICON);
 
 /** Option IDs that heal Possessed — snapshot before send so VFX detects the gain. */
 export const HEAL_OPTION_IDS = new Set(["heal", "heal2"]);
+
+const cardEffectIds = Object.fromEntries(
+  (cardsData as { id: string; effectId?: string }[]).map((c) => [c.id, c.effectId])
+);
+
+export function isGiftsDiscardPending(pub: PublicGameState): boolean {
+  const pending = pub.pendingChoice;
+  if (pending?.kind !== "discard_cards" || !pending.cardId) return false;
+  return cardEffectIds[pending.cardId] === "gifts";
+}
 
 new Image().src = HEALTH_ICON_URL;
 
@@ -139,10 +150,12 @@ export function checkPossessedHealVfx(pub: PublicGameState, mode: HealVfxMode): 
 
   if (gained > 0) {
     runPossessedHealVfx(gained, mode);
+    healSnapshotAtAction = null;
+  } else if (!isGiftsDiscardPending(pub)) {
+    healSnapshotAtAction = null;
   }
 
   prevPossessedHp = pub.possessedHp;
-  healSnapshotAtAction = null;
 }
 
 export function schedulePossessedHealVfx(

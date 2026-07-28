@@ -181,6 +181,12 @@ function lockDiceToFace(container: HTMLElement, roll: number): void {
 }
 
 export async function animatePhysicalDice(container: HTMLElement, finalRoll: number): Promise<void> {
+  if (
+    container.dataset.diceLanded === "1" &&
+    container.dataset.diceRoll === String(finalRoll)
+  ) {
+    return;
+  }
   cancelPendingDiceRollSound();
   let cube = container.querySelector(".dice-cube-3d") as HTMLElement | null;
   if (!cube) {
@@ -349,6 +355,14 @@ export async function runTriggerDiceAnimation(
 ): Promise<void> {
   const reuseHost = options?.reuseHost !== false;
   const existingHost = panel.querySelector(".trigger-roll-dice-host") as HTMLElement | null;
+  // Already showing this roll — do not tumble again (guards overlapping presentation callers).
+  if (existingHost && isDiceLandedForRoll(existingHost, roll)) {
+    if (options?.revealNumber === true) {
+      await scaleDownDiceScene(existingHost);
+      revealRollNumber(panel, roll);
+    }
+    return;
+  }
   const canReuse =
     reuseHost &&
     existingHost?.querySelector(".dice-scene") &&
@@ -409,11 +423,16 @@ function snapDiceToRoll(host: HTMLElement, roll: number): void {
   lockDiceToFace(host, roll);
 }
 
-function clearTriggerRollPresentation(panel: HTMLElement): void {
+export function clearTriggerRollPresentation(panel: HTMLElement): void {
   panel.querySelector(".trigger-roll-resolving")?.remove();
   panel.querySelector(".trigger-roll-detail")?.remove();
   panel.querySelector(".trigger-roll-outcome-host")?.remove();
   panel.querySelector(".trigger-roll-actions")?.remove();
+}
+
+export function resetTriggerRollDiceHost(panel: HTMLElement): void {
+  panel.querySelector(".trigger-roll-dice-host")?.remove();
+  panel.querySelector(".trigger-roll-resolving")?.remove();
 }
 
 function eventCardFooterHint(effectId: string, type?: string): string {
@@ -570,6 +589,7 @@ function isRollEffectEventCard(cardId: string | undefined): boolean {
 
 async function ensureLandedDice(panel: HTMLElement, roll: number, skipDice?: boolean): Promise<void> {
   const existingHost = panel.querySelector(".trigger-roll-dice-host") as HTMLElement | null;
+  // Always skip re-tumble if this roll is already showing — even when skipDice is false.
   if (existingHost && isDiceLandedForRoll(existingHost, roll)) {
     setRollTitle(panel, "Rolled");
     return;
@@ -762,9 +782,10 @@ export async function runCardRollModalPresentation(
   hold: CardRollHold,
   options?: { skipDice?: boolean; send?: (a: GameAction) => void; discardCount?: number }
 ): Promise<void> {
+  clearTriggerRollPresentation(panel);
+  resetTriggerRollDiceHost(panel);
   await ensureLandedDice(panel, hold.roll, options?.skipDice);
   setRollTitle(panel, "Rolled");
-  clearTriggerRollPresentation(panel);
 
   const diceHost = panel.querySelector(".trigger-roll-dice-host");
   const detail = document.createElement("div");

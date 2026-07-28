@@ -14,14 +14,14 @@ import {
   scheduleTeamFriendshipGainVfx,
   runAiDrawChoiceSequence,
   runRestRewardSequence,
+  showRestRewardFloater,
+  AI_DRAW_SEQUENCE_GAP_MS,
   waitForFriendshipVfxComplete,
   type FriendshipVfxMode,
 } from "./friendship-vfx.js";
 import {
   isTriggerRollOutcomePresented,
   isTriggerRollPresentationRunning,
-  runTriggerRollPresentationIfNeeded,
-  runEventRollPresentationIfNeeded,
   runCardRollPresentationIfNeeded,
   isEventRollOutcomePresented,
   isCardRollOutcomePresented,
@@ -191,21 +191,15 @@ export async function handlePresentationUpdate(
     }
 
     if (hold.at === "post_trigger_roll") {
+      if (ctx.mode !== "tv") {
+        lastHoldKey = key;
+        return ctx.prevHandIds;
+      }
       try {
-        if (ctx.mode === "tv") {
-          if (ctx.boardRoot) {
-            await runDicePresentation(ctx.boardRoot, pub, hold);
-          }
-          lastHoldKey = key;
-        } else {
-          while (isTriggerRollPresentationRunning()) {
-            await sleep(50);
-          }
-          const presented = await runTriggerRollPresentationIfNeeded(pub, ctx.send);
-          if (presented || isTriggerRollOutcomePresented(pub)) {
-            lastHoldKey = key;
-          }
+        if (ctx.boardRoot) {
+          await runDicePresentation(ctx.boardRoot, pub, hold);
         }
+        lastHoldKey = key;
       } catch (err) {
         if (import.meta.env.DEV) {
           console.warn("Dice presentation failed:", err);
@@ -215,21 +209,7 @@ export async function handlePresentationUpdate(
     }
 
     if (hold.at === "post_event_roll") {
-      try {
-        if (ctx.mode !== "tv") {
-          while (isTriggerRollPresentationRunning()) {
-            await sleep(50);
-          }
-          const presented = await runEventRollPresentationIfNeeded(pub, ctx.send);
-          if (presented || isEventRollOutcomePresented(pub)) {
-            lastHoldKey = key;
-          }
-        }
-      } catch (err) {
-        if (import.meta.env.DEV) {
-          console.warn("Event roll presentation failed:", err);
-        }
-      }
+      lastHoldKey = key;
       return ctx.prevHandIds;
     }
 
@@ -271,7 +251,8 @@ export async function handlePresentationUpdate(
         } else {
           await sleep(1200);
         }
-        if (ctx.mode === "solo" && ctx.humanPlayerId) {
+        // Only replay AI draw-phase floaters during the actual draw phase (not Prayer/effect draws).
+        if (ctx.mode === "solo" && ctx.humanPlayerId && pub.phase === "draw") {
           await runAiDrawChoiceSequence(ctx.getPub?.() ?? pub, ctx.humanPlayerId);
         }
         await ackPresentationIfHuman(ctx);
@@ -284,7 +265,7 @@ export async function handlePresentationUpdate(
         ? await animatePlayerHandDraw(pub, ctx, drawPlayerId)
         : ctx.prevHandIds;
       await sleep(400);
-      if (ctx.mode === "solo" && ctx.humanPlayerId) {
+      if (ctx.mode === "solo" && ctx.humanPlayerId && pub.phase === "draw") {
         await runAiDrawChoiceSequence(ctx.getPub?.() ?? pub, ctx.humanPlayerId);
       }
       await ackPresentationIfHuman(ctx);
@@ -299,24 +280,32 @@ export async function handlePresentationUpdate(
       if (ctx.mode !== "tv") {
         const sequenceIds = hold.playerId ? [hold.playerId] : undefined;
         const humanId = ctx.humanPlayerId ?? "";
-        if (humanId) {
-          await runRestRewardSequence(
-            ctx.getPub?.() ?? pub,
-            hold.reward,
-            humanId,
-            sequenceIds
-          );
-        } else {
-          await sleep(600);
-        }
+        const latestPub = ctx.getPub?.() ?? pub;
 
-        if (hold.reward === "draw") {
-          if (ctx.mode === "play" && ctx.humanPlayerId) {
-            await animatePlayerHandDraw(pub, ctx, ctx.humanPlayerId);
-          } else if (ctx.mode === "solo") {
-            for (const player of pub.players) {
-              await animatePlayerHandDraw(pub, ctx, player.id);
-              await sleep(250);
+        // Solo day Rest: card +1 floater, then deal anim, per player; end on player 1.
+        if (ctx.mode === "solo" && hold.reward === "draw" && humanId) {
+          const players = [...latestPub.players].sort((a, b) => a.slot - b.slot);
+          for (const player of players) {
+            showRestRewardFloater(player.id, "draw", humanId);
+            await sleep(AI_DRAW_SEQUENCE_GAP_MS);
+            await animatePlayerHandDraw(latestPub, ctx, player.id);
+            await sleep(250);
+          }
+          const player1Id = players[0]?.id ?? humanId;
+          const focused = ctx.focusPlayerHand?.(player1Id);
+          if (focused && ctx.handRoot) {
+            renderHand(ctx.handRoot, focused.hand, focused.handCtx);
+          }
+        } else {
+          if (humanId) {
+            await runRestRewardSequence(latestPub, hold.reward, humanId, sequenceIds);
+          } else {
+            await sleep(600);
+          }
+
+          if (hold.reward === "draw") {
+            if (ctx.mode === "play" && ctx.humanPlayerId) {
+              await animatePlayerHandDraw(pub, ctx, ctx.humanPlayerId);
             }
           }
         }

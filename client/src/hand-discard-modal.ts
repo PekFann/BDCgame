@@ -1,6 +1,7 @@
 import type { GameAction, PrivateGameState, PublicGameState } from "../../shared/types.js";
 import { cardImg, cardName } from "./ws-client.js";
 import { forceCloseCardModal, isCardModalOpen } from "./card-modal.js";
+import { isGiftsDiscardPending, snapshotPossessedHpBeforeHeal } from "./heal-vfx.js";
 import { closeAnimatedModal, forceCloseModal, openAnimatedModal } from "./modal-animations.js";
 import { humanControlsPending, pendingOwnerHand } from "./pending-choice-ui.js";
 
@@ -91,6 +92,9 @@ export function refreshHandDiscardModal(
     btn.innerHTML = `<img src="${cardImg(card.cardId)}" alt="${cardName(card.cardId)}" />`;
     btn.addEventListener("click", () => {
       const ids = min === 1 && max === 1 ? [card.instanceId] : [card.instanceId];
+      if (isGiftsDiscardPending(pub)) {
+        snapshotPossessedHpBeforeHeal(pub);
+      }
       send({ type: "DISCARD_CARDS", cardInstanceIds: ids });
       forceCloseModal(root, panel);
     });

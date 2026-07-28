@@ -1,7 +1,9 @@
 import type { GameAction, PrivateGameState, PublicGameState } from "../../shared/types.js";
 import { closeDrawPhaseModalIfOpen } from "./draw-phase-modal.js";
 import {
+  clearTriggerRollPresentation,
   hasLandedDiceHost,
+  resetTriggerRollDiceHost,
   runTriggerDiceAnimation,
   runTriggerRollModalPresentation,
   runEventRollModalPresentation,
@@ -123,7 +125,9 @@ export function isTriggerRollOutcomePresented(pub: PublicGameState): boolean {
 }
 
 function rollContext(pub: PublicGameState): string {
-  return pub.pendingRerollPrompt?.context ?? "trigger";
+  if (pub.pendingRerollPrompt?.context) return pub.pendingRerollPrompt.context;
+  if (pub.presentationHold?.at === "post_card_roll") return "card";
+  return "trigger";
 }
 
 function isCardRollFlowActive(pub: PublicGameState): boolean {
@@ -144,7 +148,7 @@ export function isRerollDiceAnimReady(pub: PublicGameState): boolean {
   const prompt = pub.pendingRerollPrompt;
   const roll = prompt?.roll ?? pub.lastDiceRoll;
   if (roll === null) return isTriggerDiceAnimDone();
-  const context = prompt?.context ?? "trigger";
+  const context = rollContext(pub);
   const key = diceAnimKey(pub, roll, context);
   return completedDiceAnimKey === key && !diceAnimRunning;
 }
@@ -204,6 +208,11 @@ async function runDiceAnimIfNeeded(
     const { root } = ensureTriggerRollModal();
     if (root.hidden) openAnimatedModal(root, panel);
 
+    if (context === "card") {
+      clearTriggerRollPresentation(panel);
+      resetTriggerRollDiceHost(panel);
+    }
+
     await runTriggerDiceAnimation(panel, roll, { revealNumber: false });
     completedDiceAnimKey = key;
 
@@ -223,16 +232,7 @@ async function runDiceAnimIfNeeded(
     presentationRunning = false;
   }
 
-  // Follow-ups after flags clear so TT / outcome UI are not blocked by presentationRunning.
-  const latest = getPub?.() ?? pub;
-  if (latest.presentationHold?.at === "post_trigger_roll") {
-    void runTriggerRollPresentationIfNeeded(latest, send);
-  } else if (latest.presentationHold?.at === "post_event_roll") {
-    void runEventRollPresentationIfNeeded(latest, send);
-  } else if (latest.presentationHold?.at === "post_card_roll") {
-    void runCardRollPresentationIfNeeded(latest, send);
-  }
-  onDiceAnimComplete?.(latest);
+  onDiceAnimComplete?.(getPub?.() ?? pub);
 }
 
 function showPrompt(panel: HTMLElement, send: SendFn): void {
@@ -264,22 +264,30 @@ export async function runTriggerRollPresentationIfNeeded(
   const key = outcomeKey(pub);
   if (key && key === outcomePresentedKey) return false;
 
-  const { root, panel } = ensureTriggerRollModal();
-  if (root.hidden) openAnimatedModal(root, panel);
-
+  // Lock synchronously so refresh + orchestrator cannot both start a tumble.
   presentationRunning = true;
+  if (key) outcomePresentedKey = key;
   try {
-    const skipDice = hasLandedDiceHost(panel, hold.roll);
+    const { root, panel } = ensureTriggerRollModal();
+    if (root.hidden) openAnimatedModal(root, panel);
+
+    // Skip re-tumble if Path A already animated this roll (e.g. before Time Travel Keep).
+    const animDone =
+      completedDiceAnimKey === diceAnimKey(pub, hold.roll, rollContext(pub));
+    const skipDice = hasLandedDiceHost(panel, hold.roll) || animDone;
     const { handoffToDice } = await runTriggerRollModalPresentation(panel, pub, hold, {
       skipDice,
       send,
     });
-    outcomePresentedKey = key;
+    completedDiceAnimKey = diceAnimKey(pub, hold.roll, rollContext(pub));
     if (!handoffToDice) {
       forceCloseModal(root, panel);
     }
     rollSent = false;
     clearResolvingPoll();
+  } catch (err) {
+    if (key && outcomePresentedKey === key) outcomePresentedKey = "";
+    throw err;
   } finally {
     presentationRunning = false;
   }
@@ -296,16 +304,22 @@ export async function runEventRollPresentationIfNeeded(
   const key = eventRollOutcomeKey(pub);
   if (key && key === eventRollPresentedKey) return false;
 
-  const { root, panel } = ensureTriggerRollModal();
-  if (root.hidden) openAnimatedModal(root, panel);
-
   presentationRunning = true;
+  if (key) eventRollPresentedKey = key;
   try {
-    const skipDice = hasLandedDiceHost(panel, hold.roll);
+    const { root, panel } = ensureTriggerRollModal();
+    if (root.hidden) openAnimatedModal(root, panel);
+
+    const animDone =
+      completedDiceAnimKey === diceAnimKey(pub, hold.roll, rollContext(pub));
+    const skipDice = hasLandedDiceHost(panel, hold.roll) || animDone;
     await runEventRollModalPresentation(panel, hold, { skipDice, send });
-    eventRollPresentedKey = key;
+    completedDiceAnimKey = diceAnimKey(pub, hold.roll, rollContext(pub));
     forceCloseModal(root, panel);
     rollSent = false;
+  } catch (err) {
+    if (key && eventRollPresentedKey === key) eventRollPresentedKey = "";
+    throw err;
   } finally {
     presentationRunning = false;
   }
@@ -322,20 +336,24 @@ export async function runCardRollPresentationIfNeeded(
   const key = cardRollOutcomeKey(pub);
   if (key && key === cardRollPresentedKey) return false;
 
-  const { root, panel } = ensureTriggerRollModal();
-  if (root.hidden) openAnimatedModal(root, panel);
-
   presentationRunning = true;
+  if (key) cardRollPresentedKey = key;
   try {
-    const skipDice = hasLandedDiceHost(panel, hold.roll);
+    const { root, panel } = ensureTriggerRollModal();
+    if (root.hidden) openAnimatedModal(root, panel);
+
+    clearTriggerRollPresentation(panel);
+    resetTriggerRollDiceHost(panel);
     await runCardRollModalPresentation(panel, hold, {
-      skipDice,
+      skipDice: false,
       send,
       discardCount: pub.actionDiscard?.length ?? 0,
     });
-    cardRollPresentedKey = key;
     forceCloseModal(root, panel);
     rollSent = false;
+  } catch (err) {
+    if (key && cardRollPresentedKey === key) cardRollPresentedKey = "";
+    throw err;
   } finally {
     presentationRunning = false;
   }
@@ -485,6 +503,10 @@ export function resetTriggerRollModal(): void {
   eventRollPresentedKey = "";
   cardRollPresentedKey = "";
   panelEl?.classList.remove("trigger-roll-panel--event-only");
+  if (panelEl) {
+    clearTriggerRollPresentation(panelEl);
+    resetTriggerRollDiceHost(panelEl);
+  }
   if (modalEl && panelEl && !modalEl.hidden) {
     forceCloseModal(modalEl, panelEl);
   }

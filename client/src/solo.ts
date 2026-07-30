@@ -1,7 +1,7 @@
 import type { CardInstance, PrivateGameState, PublicGameState } from "../../shared/types.js";
 import {
   createSoloRoom,
-  fetchPossessedOptions,
+  fetchSoloSetupOptions,
   GameClient,
   bindBoardAttachments,
   bindPlayerRoster,
@@ -535,6 +535,7 @@ async function init() {
   initFullscreenButton();
 
   const possessedSelect = document.getElementById("possessed") as HTMLSelectElement;
+  const demonSelect = document.getElementById("demon") as HTMLSelectElement;
   const startBtn = document.getElementById("startBtn") as HTMLButtonElement;
 
   if (import.meta.env.DEV && location.port === "3000") {
@@ -543,6 +544,7 @@ async function init() {
     );
     startBtn.disabled = true;
     possessedSelect.disabled = true;
+    demonSelect.disabled = true;
     return;
   }
 
@@ -594,11 +596,14 @@ async function init() {
   });
 
   try {
-    const options = await fetchPossessedOptions();
-    possessedSelect.innerHTML = options
-      .map((o) => `<option value="${o.id}">${o.name}</option>`)
-      .join("");
+    const options = await fetchSoloSetupOptions();
+    const randomOption = `<option value="" selected>Random</option>`;
+    possessedSelect.innerHTML =
+      randomOption + options.possessed.map((o) => `<option value="${o.id}">${o.name}</option>`).join("");
+    demonSelect.innerHTML =
+      randomOption + options.demons.map((o) => `<option value="${o.id}">${o.name}</option>`).join("");
     possessedSelect.disabled = false;
+    demonSelect.disabled = false;
     startBtn.disabled = false;
   } catch (err) {
     showSetupError((err as Error).message);
@@ -607,10 +612,7 @@ async function init() {
   startBtn.addEventListener("click", async () => {
     clearSetupError();
     const possessedId = possessedSelect.value;
-    if (!possessedId) {
-      showSetupError("Please select a Possessed character.");
-      return;
-    }
+    const demonId = demonSelect.value;
 
     startBtn.disabled = true;
     const playerCount = Number((document.getElementById("playerCount") as HTMLSelectElement).value);
@@ -649,7 +651,7 @@ async function init() {
       resetPossessedHealVfxTracking();
       roomId = await createSoloRoom();
       await client.connect({ roomId, role: "solo", slot: 1, name: "You" });
-      client.startGame(possessedId, playerCount);
+      client.startGame(possessedId, playerCount, demonId || undefined);
       await startedPromise;
     } catch (err) {
       showSetupError((err as Error).message);

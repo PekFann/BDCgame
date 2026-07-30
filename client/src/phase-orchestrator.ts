@@ -171,8 +171,7 @@ export async function handlePresentationUpdate(
 
   try {
     if (hold.at === "cycle_start") {
-      showCycleStartToast(hold.cycle);
-      await sleep(1500);
+      await showCycleStartToast(hold.cycle);
       await ackPresentationIfHuman(ctx);
       lastHoldKey = key;
       return ctx.prevHandIds;
@@ -271,6 +270,7 @@ export async function handlePresentationUpdate(
       while (isDrawAnimating()) {
         await sleep(50);
       }
+      let restHandIds = ctx.prevHandIds;
       if (ctx.mode !== "tv") {
         const sequenceIds = hold.playerId ? [hold.playerId] : undefined;
         const humanId = ctx.humanPlayerId ?? "";
@@ -289,6 +289,8 @@ export async function handlePresentationUpdate(
           const focused = ctx.focusPlayerHand?.(player1Id);
           if (focused && ctx.handRoot) {
             renderHand(ctx.handRoot, focused.hand, focused.handCtx);
+            setPrevHandIdsForPlayer(player1Id, focused.hand);
+            restHandIds = getHandInstanceIds(focused.hand);
           }
         } else {
           if (humanId) {
@@ -299,7 +301,7 @@ export async function handlePresentationUpdate(
 
           if (hold.reward === "draw") {
             if (ctx.mode === "play" && ctx.humanPlayerId) {
-              await animatePlayerHandDraw(pub, ctx, ctx.humanPlayerId);
+              restHandIds = await animatePlayerHandDraw(pub, ctx, ctx.humanPlayerId);
             }
           }
         }
@@ -309,7 +311,7 @@ export async function handlePresentationUpdate(
       await sleep(1000);
       await ackPresentationIfHuman(ctx);
       lastHoldKey = key;
-      return ctx.prevHandIds;
+      return restHandIds;
     }
 
     await ackPresentationIfHuman(ctx);

@@ -99,6 +99,7 @@ export function getLegalActions(state: GameState, player: PlayerState): GameActi
 
   if (
     state.phase === "triggers" &&
+    state.introAcknowledged &&
     state.lastDiceRoll === null &&
     !state.presentationHold &&
     !state.pendingRerollPrompt &&
@@ -145,7 +146,7 @@ export function getLegalActions(state: GameState, player: PlayerState): GameActi
   if (controllerId === player.id && state.pendingChoice) {
     const pending = state.pendingChoice;
     const owner = state.players.find((p) => p.id === pending.playerId);
-    if (pending.options) {
+    if (pending.options && pending.kind !== "keep_cards") {
       for (const opt of pending.options) {
         actions.push({ type: "RESOLVE_PICK_ONE", optionId: opt.id });
       }
@@ -154,6 +155,13 @@ export function getLegalActions(state: GameState, player: PlayerState): GameActi
       for (const t of pending.targets) {
         actions.push({ type: "SELECT_TARGET", targetId: t });
       }
+    }
+    if (pending.kind === "keep_cards" && pending.options?.length) {
+      const keepCount = Math.min(pending.maxKeep ?? pending.minKeep ?? 2, pending.options.length);
+      actions.push({
+        type: "KEEP_CARDS",
+        cardInstanceIds: pending.options.slice(0, keepCount).map((o) => o.id),
+      });
     }
     if (pending.kind === "discard_cards" && owner && owner.hand.length) {
       const eligible =
@@ -220,6 +228,13 @@ export function pickAiAction(state: GameState, player: PlayerState): GameAction 
   } else if (state.pendingChoice?.playerId === player.id) {
     const pending = state.pendingChoice;
     if (pending.options?.length) {
+      if (pending.kind === "keep_cards") {
+        const keepCount = Math.min(pending.maxKeep ?? pending.minKeep ?? 2, pending.options.length);
+        return {
+          type: "KEEP_CARDS",
+          cardInstanceIds: pending.options.slice(0, keepCount).map((o) => o.id),
+        };
+      }
       if (pending.kind === "prayer_combo") {
         const withPartner = pending.options.find((o) => o.id.startsWith("with:"));
         return { type: "RESOLVE_PICK_ONE", optionId: withPartner?.id ?? pending.options[0].id };

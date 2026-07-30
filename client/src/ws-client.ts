@@ -212,12 +212,13 @@ export class GameClient {
     this.ws?.send(JSON.stringify({ type: "ACTION", action }));
   }
 
-  startGame(possessedId: string, playerCount?: number): void {
+  startGame(possessedId: string, playerCount?: number, demonId?: string): void {
     this.ws?.send(
       JSON.stringify({
         type: "START",
         possessedId,
         ...(playerCount != null ? { playerCount } : {}),
+        ...(demonId ? { demonId } : {}),
       })
     );
   }
@@ -228,7 +229,10 @@ export async function fetchPossessedIds(): Promise<string[]> {
   return options.map((o) => o.id);
 }
 
-export async function fetchPossessedOptions(): Promise<{ id: string; name: string }[]> {
+export async function fetchSoloSetupOptions(): Promise<{
+  possessed: { id: string; name: string }[];
+  demons: { id: string; name: string }[];
+}> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -237,11 +241,17 @@ export async function fetchPossessedOptions(): Promise<{ id: string; name: strin
       if (!res.ok) {
         throw new Error("Could not load characters — is the server running on port 3000?");
       }
-      const data = (await res.json()) as { possessed?: string[] };
+      const data = (await res.json()) as { possessed?: string[]; demons?: string[] };
       if (!data.possessed?.length) {
         throw new Error("No Possessed characters returned from server.");
       }
-      return data.possessed.map((id) => ({ id, name: getCardDisplayName(id) }));
+      if (!data.demons?.length) {
+        throw new Error("No Demon contracts returned from server.");
+      }
+      return {
+        possessed: data.possessed.map((id) => ({ id, name: getCardDisplayName(id) })),
+        demons: data.demons.map((id) => ({ id, name: getCardDisplayName(id) })),
+      };
     } catch (err) {
       lastError = err as Error;
       if (attempt < 4) {
@@ -251,6 +261,11 @@ export async function fetchPossessedOptions(): Promise<{ id: string; name: strin
   }
 
   throw lastError ?? new Error("Could not load characters.");
+}
+
+export async function fetchPossessedOptions(): Promise<{ id: string; name: string }[]> {
+  const { possessed } = await fetchSoloSetupOptions();
+  return possessed;
 }
 
 export async function createRoom(): Promise<{ roomId: string; joinUrls: Record<number, string> }> {
@@ -668,7 +683,7 @@ export function renderBoard(
     humanPlayerId != null ? { pub, humanPlayerId } : undefined;
 
   root.innerHTML = `
-    <div class="board-chrome board-chrome-top glass-panel">
+    <div class="board-chrome board-chrome-top glass-panel" data-phase="${pub.phase}">
       <div class="phase-hud">
         <strong>Cycle ${pub.cycle}/${pub.maxCycles}</strong> — Phase: <strong>${pub.phase}</strong>
         ${dayLabel ? `| ${dayLabel}` : ""}
@@ -730,6 +745,8 @@ export function renderCompactStatus(
   const human = pub.players.find((p) => p.isHuman) ?? pub.players.find((p) => p.name === playerName);
   const possessedReq = possessedFriendshipRequirement(pub.possessedId);
 
+  root.dataset.phase = pub.phase;
+  root.classList.add("compact-status");
   root.innerHTML = `
     <h2>${playerName ?? human?.name ?? "Player"}</h2>
     <div class="phase-hud">

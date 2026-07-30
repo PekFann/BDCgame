@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { WebSocketServer } from "ws";
 import QRCode from "qrcode";
-import { POSSESSED_IDS } from "../shared/cards.js";
+import { DEMON_IDS, POSSESSED_IDS } from "../shared/cards.js";
 import { buildJoinUrl, createRoom, getLanIp, getRoom } from "./rooms.js";
 import { broadcastRoom, handleMessage, removeClient } from "./ws.js";
 import { toPublicState } from "./game/engine.js";
@@ -58,12 +58,12 @@ app.post("/api/rooms", (_req, res) => {
 });
 
 app.get("/api/solo", (_req, res) => {
-  res.json({ possessed: POSSESSED_IDS });
+  res.json({ possessed: POSSESSED_IDS, demons: DEMON_IDS });
 });
 
 app.post("/api/solo", (_req, res) => {
   const room = createRoom("solo");
-  res.json({ roomId: room.id, possessed: POSSESSED_IDS });
+  res.json({ roomId: room.id, possessed: POSSESSED_IDS, demons: DEMON_IDS });
 });
 
 app.get("/api/rooms/:id", (req, res) => {

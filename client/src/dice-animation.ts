@@ -895,7 +895,7 @@ export function cardRollOutcomeMarkup(
     case "wild_card":
       return roll <= 3
         ? `<p class="trigger-roll-outcome"><strong>Wild Card</strong><br /><span class="card-modal-effect">Discard your hand and draw 5 cards.</span></p>`
-        : `<p class="trigger-roll-outcome"><strong>Wild Card</strong><br /><span class="card-modal-effect">Draw 5 cards, then discard down to 2.</span></p>`;
+        : `<p class="trigger-roll-outcome"><strong>Wild Card</strong><br /><span class="card-modal-effect">Draw 5 cards, keep 2, and add them to your hand.</span></p>`;
     case "chain_broken":
       return `<p class="trigger-roll-outcome"><strong>The Chain is Broken</strong><br /><span class="card-modal-effect">Deal ${roll} damage to a demon.</span></p>`;
     default:

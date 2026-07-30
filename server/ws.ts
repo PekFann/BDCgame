@@ -132,6 +132,7 @@ export function handleMessage(ws: WebSocket, raw: string, port: number): void {
         type: "START_GAME",
         possessedId,
         playerCount,
+        ...(typeof msg.demonId === "string" && msg.demonId ? { demonId: msg.demonId as string } : {}),
       });
       broadcastRoom(room);
     } catch (err) {

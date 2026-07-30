@@ -91,6 +91,7 @@ export interface PendingChoice {
     | "pick_one"
     | "select_target"
     | "discard_cards"
+    | "keep_cards"
     | "distribute_energy"
     | "rule_book"
     | "talk_it_out"
@@ -111,6 +112,8 @@ export interface PendingChoice {
   options?: { id: string; label: string; cardId?: string }[];
   minDiscard?: number;
   maxDiscard?: number;
+  minKeep?: number;
+  maxKeep?: number;
   amount?: number;
   targets?: string[];
   /** Instant Access / Call for Help: which pile to pick from (default discard). */
@@ -216,6 +219,8 @@ export interface GameState {
   demonRevealed: boolean;
   modifiers: GameModifiers;
   pendingChoice: PendingChoice | null;
+  /** Temp cards for keep_cards (e.g. Wild Card 4–6 draw pool). */
+  pendingCardPool: CardInstance[] | null;
   pendingAiPlay: PendingAiPlay | null;
   lastDiceRoll: number | null;
   diceRollerId: string | null;
@@ -312,7 +317,7 @@ export interface PrivateGameState {
 }
 
 export type GameAction =
-  | { type: "START_GAME"; possessedId: string; playerCount: number }
+  | { type: "START_GAME"; possessedId: string; playerCount: number; demonId?: string }
   | { type: "SET_LOBBY_POSSESSED"; possessedId: string }
   | { type: "CHOOSE_DRAW"; choice: DrawChoice }
   | { type: "PLAY_CARD"; cardInstanceId: string; targetId?: string; pickOptionId?: string }
@@ -328,6 +333,7 @@ export type GameAction =
   | { type: "RESOLVE_PICK_ONE"; optionId: string }
   | { type: "SELECT_TARGET"; targetId: string }
   | { type: "DISCARD_CARDS"; cardInstanceIds: string[] }
+  | { type: "KEEP_CARDS"; cardInstanceIds: string[] }
   | { type: "DISTRIBUTE_ENERGY"; distribution: Record<string, number> }
   | {
       type: "RULE_BOOK_TRANSFER";

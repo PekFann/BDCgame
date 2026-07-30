@@ -1,5 +1,5 @@
-const OPEN_MS = 250;
-const CLOSE_MS = 200;
+const OPEN_MS = 500;
+const CLOSE_MS = 500;
 
 export type OpenAnimatedModalOptions = {
   /** Modal element ids that should stay open (not force-closed). */
@@ -38,7 +38,6 @@ export function openAnimatedModal(
   });
 
   const backdrop = getModalBackdrop(root);
-  const openMs = root.classList.contains("game-start-modal") ? 500 : OPEN_MS;
 
   root.hidden = false;
   root.style.pointerEvents = "";
@@ -64,7 +63,7 @@ export function openAnimatedModal(
   };
   panel.addEventListener("animationend", done, { once: true });
   backdrop?.addEventListener("animationend", done, { once: true });
-  setTimeout(done, openMs + 50);
+  setTimeout(done, OPEN_MS + 50);
 }
 
 export function closeAnimatedModal(
@@ -79,7 +78,6 @@ export function closeAnimatedModal(
   if (root.classList.contains("is-closing")) return;
 
   const backdrop = getModalBackdrop(root);
-  const closeMs = root.classList.contains("game-start-modal") ? 350 : CLOSE_MS;
 
   root.style.pointerEvents = "none";
   root.classList.add("is-closing");
@@ -96,5 +94,5 @@ export function closeAnimatedModal(
   };
   panel.addEventListener("animationend", done, { once: true });
   backdrop?.addEventListener("animationend", done, { once: true });
-  setTimeout(done, closeMs + 50);
+  setTimeout(done, CLOSE_MS + 50);
 }

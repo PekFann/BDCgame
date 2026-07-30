@@ -1,10 +1,12 @@
 import type { GameState, PendingCardRollResume } from "../../shared/types.js";
 import { DNC, getCard } from "../../shared/cards.js";
 import {
+  addToHand,
   dealDamageToAllDemons,
   dealDamageToDemon,
   damagePossessed,
   discardFromHand,
+  drawCardsFromDeck,
   drawForPlayer,
   gainEnergy,
   gainFriendship,
@@ -15,27 +17,59 @@ import { enterDncPhase } from "./phases.js";
 import { log } from "./util.js";
 
 export const WILD_CARD_ID = "action_14";
-const WILD_CARD_HAND_TARGET = 2;
+const WILD_CARD_KEEP = 2;
 
-export function isWildCardDiscard(pending: GameState["pendingChoice"]): boolean {
-  return pending?.kind === "discard_cards" && pending.cardId === WILD_CARD_ID;
+export function isWildCardKeep(pending: GameState["pendingChoice"]): boolean {
+  return pending?.kind === "keep_cards" && pending.cardId === WILD_CARD_ID;
 }
 
-/** After Wild Card 4–6: prompt discard one card at a time until hand size is 2. */
-export function startWildCardDiscardIfNeeded(state: GameState, playerId: string): void {
-  const player = getPlayer(state, playerId);
-  if (player.hand.length <= WILD_CARD_HAND_TARGET) return;
+/** After Wild Card 4–6: choose 2 of the drawn cards to add to the existing hand. */
+export function startWildCardKeepPrompt(state: GameState, playerId: string, drawn: { instanceId: string; cardId: string }[]): void {
+  if (drawn.length === 0) return;
+  if (drawn.length <= WILD_CARD_KEEP) {
+    const player = getPlayer(state, playerId);
+    for (const card of drawn) addToHand(state, player, card);
+    log(state, `${player.name} keeps ${drawn.length} drawn card${drawn.length === 1 ? "" : "s"}.`);
+    state.pendingCardPool = null;
+    return;
+  }
+  state.pendingCardPool = drawn;
   state.pendingChoice = {
-    kind: "discard_cards",
+    kind: "keep_cards",
     playerId,
-    minDiscard: 1,
-    maxDiscard: 1,
     cardId: WILD_CARD_ID,
+    minKeep: WILD_CARD_KEEP,
+    maxKeep: WILD_CARD_KEEP,
+    options: drawn.map((c) => ({
+      id: c.instanceId,
+      label: getCard(c.cardId).name,
+      cardId: c.cardId,
+    })),
   };
 }
 
-export function continueWildCardDiscard(state: GameState, playerId: string): void {
-  startWildCardDiscardIfNeeded(state, playerId);
+export function resolveKeepCards(state: GameState, playerId: string, keepIds: string[]): void {
+  const pending = state.pendingChoice;
+  if (!pending || pending.kind !== "keep_cards") throw new Error("No keep-cards choice pending");
+  const pool = state.pendingCardPool ?? [];
+  const minKeep = pending.minKeep ?? WILD_CARD_KEEP;
+  const maxKeep = pending.maxKeep ?? minKeep;
+  if (keepIds.length < minKeep || keepIds.length > maxKeep) {
+    throw new Error(`Select ${minKeep === maxKeep ? minKeep : `${minKeep}–${maxKeep}`} cards to keep`);
+  }
+  const poolById = new Map(pool.map((c) => [c.instanceId, c]));
+  for (const id of keepIds) {
+    if (!poolById.has(id)) throw new Error("Invalid card selection");
+  }
+  const keepSet = new Set(keepIds);
+  const player = getPlayer(state, playerId);
+  for (const card of pool) {
+    if (keepSet.has(card.instanceId)) addToHand(state, player, card);
+    else state.actionDiscard.push(card);
+  }
+  log(state, `${player.name} keeps ${keepIds.length} cards and adds them to their hand.`);
+  state.pendingCardPool = null;
+  state.pendingChoice = null;
 }
 
 function demonTargets(state: GameState): string[] {
@@ -74,9 +108,9 @@ export function resumeCardRollEffect(state: GameState, resume: PendingCardRollRe
         drawForPlayer(state, player, 5);
         log(state, `${player.name} discards their hand and draws 5 cards.`);
       } else {
-        drawForPlayer(state, player, 5);
-        log(state, `${player.name} draws 5 cards.`);
-        startWildCardDiscardIfNeeded(state, resume.playerId);
+        const drawn = drawCardsFromDeck(state, 5);
+        log(state, `${player.name} draws ${drawn.length} cards to choose from.`);
+        startWildCardKeepPrompt(state, resume.playerId, drawn);
       }
       break;
     case "instant_access":
@@ -148,11 +182,10 @@ export function resumeCardRollEffect(state: GameState, resume: PendingCardRollRe
       break;
     case "event_phantom_fart":
       if (roll <= 3) {
-        for (const p of state.players) gainFriendship(p, -1);
-        log(state, "Phantom Fart: all players lose 1 friendship.");
+        for (const p of state.players) discardFromHand(state, p, p.hand.slice(0, 1).map((c) => c.instanceId));
+        log(state, "Phantom Fart: each player discards 1 card.");
       } else {
-        dealDamageToAllDemons(state, 2);
-        log(state, "Phantom Fart: demons take 2 damage.");
+        damagePossessed(state, 2, "Phantom Fart");
       }
       break;
     case "event_wrong_spell":

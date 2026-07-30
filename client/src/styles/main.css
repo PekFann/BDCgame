@@ -23,6 +23,13 @@
   --border-glow: rgba(158, 61, 82, 0.25);
   --shadow-deep: 0 12px 40px rgba(0, 0, 0, 0.65);
   --panel-blur: 8px;
+  /* Per-phase accents (high contrast on dark UI) */
+  --phase-draw: #3ecfbf;
+  --phase-day: #f0b429;
+  --phase-night: #6eb6ff;
+  --phase-triggers: #ff5a6e;
+  --phase-manifest: #e84545;
+  --phase-cycle: #e8c56a;
   --glass-bg: rgba(28, 22, 36, 0.55);
   --glass-bg-strong: rgba(32, 26, 42, 0.68);
   --glass-blur: 14px;
@@ -113,8 +120,8 @@ a:hover {
   font-weight: 600;
   letter-spacing: 0.04em;
   margin-bottom: 0.5rem;
-  color: var(--gold);
-  text-shadow: 0 2px 16px rgba(201, 162, 77, 0.2);
+  color: #fff;
+  text-shadow: 0 2px 16px rgba(255, 255, 255, 0.12);
 }
 
 .landing p {
@@ -646,6 +653,47 @@ a:hover {
   color: var(--gold);
 }
 
+.board-chrome-top[data-phase="draw"] .phase-hud strong,
+.board-chrome-top[data-phase="draw"] .phase-hud .draw-prompt {
+  color: var(--phase-draw);
+}
+
+.board-chrome-top[data-phase="day"] .phase-hud strong {
+  color: var(--phase-day);
+}
+
+.board-chrome-top[data-phase="night"] .phase-hud strong {
+  color: var(--phase-night);
+}
+
+.board-chrome-top[data-phase="triggers"] .phase-hud strong {
+  color: var(--phase-triggers);
+}
+
+.board-chrome-top[data-phase="manifest"] .phase-hud strong {
+  color: var(--phase-manifest);
+}
+
+.compact-status[data-phase="draw"] .phase-hud strong {
+  color: var(--phase-draw);
+}
+
+.compact-status[data-phase="day"] .phase-hud strong {
+  color: var(--phase-day);
+}
+
+.compact-status[data-phase="night"] .phase-hud strong {
+  color: var(--phase-night);
+}
+
+.compact-status[data-phase="triggers"] .phase-hud strong {
+  color: var(--phase-triggers);
+}
+
+.compact-status[data-phase="manifest"] .phase-hud strong {
+  color: var(--phase-manifest);
+}
+
 .phase-hud .draw-prompt {
   margin: 0.25rem 0 0;
   color: var(--gold);
@@ -900,9 +948,9 @@ a:hover {
   left: 50%;
   transform: translateX(-50%) translateY(-12px);
   z-index: 250;
-  background: var(--surface);
-  border: 1px solid var(--border-subtle);
-  border-top: 2px solid var(--accent);
+  background: #c6366e;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-top: 3px solid #ff8a80;
   border-radius: 12px;
   padding: 0.75rem 1.25rem;
   text-align: center;
@@ -912,19 +960,54 @@ a:hover {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
-  backdrop-filter: blur(var(--panel-blur));
+  color: #fff;
 }
 
 .phase-toast strong {
   font-family: var(--font-display);
-  color: var(--gold);
+  color: #fff;
   font-size: 1.35rem;
+  font-weight: normal;
   letter-spacing: 0.03em;
 }
 
 .phase-toast-detail {
-  font-size: 0.85rem;
-  color: var(--muted);
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.phase-toast--draw,
+.phase-toast--day,
+.phase-toast--night,
+.phase-toast--triggers,
+.phase-toast--manifest,
+.phase-toast--cycle {
+  background: #c6366e;
+  border-top-color: #ff8a80;
+}
+
+.phase-toast--draw strong,
+.phase-toast--day strong,
+.phase-toast--night strong,
+.phase-toast--triggers strong,
+.phase-toast--manifest strong,
+.phase-toast--cycle strong {
+  color: #fff;
+}
+
+.phase-toast--cycle strong {
+  font-size: clamp(2rem, 6vw, 3.25rem);
+  letter-spacing: 0.06em;
+}
+
+.phase-toast--centered {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.96);
+  padding: 1.25rem 2rem;
+  min-width: min(80vw, 280px);
+  border-width: 1px;
+  border-top-width: 3px;
 }
 
 .phase-toast.phase-toast-in {
@@ -933,6 +1016,14 @@ a:hover {
 
 .phase-toast.phase-toast-out {
   animation: phaseToastOut 0.28s ease forwards;
+}
+
+.phase-toast--centered.phase-toast-in {
+  animation: phaseToastCenterIn 0.35s ease forwards;
+}
+
+.phase-toast--centered.phase-toast-out {
+  animation: phaseToastCenterOut 0.28s ease forwards;
 }
 
 @keyframes phaseToastIn {
@@ -954,6 +1045,28 @@ a:hover {
   to {
     opacity: 0;
     transform: translateX(-50%) translateY(-8px);
+  }
+}
+
+@keyframes phaseToastCenterIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes phaseToastCenterOut {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
   }
 }
 
@@ -1331,7 +1444,7 @@ a:hover {
 }
 
 .trigger-roll-modal > .card-modal-backdrop.is-opening {
-  animation: modalBackdropIn 0.5s ease forwards;
+  animation: modalBackdropIn 0.5s ease-out forwards;
 }
 
 .dice-outcome-toast {
@@ -1398,7 +1511,8 @@ a:hover {
   margin: 0 0 0.75rem;
   font-family: var(--font-display);
   font-size: 1.35rem;
-  color: var(--gold);
+  font-weight: normal;
+  color: #fff;
   letter-spacing: 0.04em;
 }
 
@@ -1880,9 +1994,12 @@ a:hover {
   justify-content: center;
 }
 
-.card-modal[hidden],
-.card-modal.is-closing {
+.card-modal[hidden] {
   display: none !important;
+  pointer-events: none !important;
+}
+
+.card-modal.is-closing {
   pointer-events: none !important;
 }
 
@@ -1896,49 +2013,15 @@ a:hover {
   opacity: 1;
 }
 
-.game-start-modal > .card-modal-backdrop.is-opening {
+.card-modal-backdrop.is-opening,
+.modal-overlay.is-opening {
   opacity: 0;
-  animation: gameStartBackdropIn 0.5s ease-out forwards;
+  animation: modalBackdropIn 0.5s ease-out forwards;
 }
 
-.game-start-modal > .card-modal-backdrop.is-closing {
-  animation: gameStartBackdropOut 0.35s ease-in forwards;
-}
-
-@keyframes gameStartBackdropIn {
-  from {
-    opacity: 0;
-    backdrop-filter: blur(0);
-    -webkit-backdrop-filter: blur(0);
-  }
-  to {
-    opacity: 1;
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-  }
-}
-
-@keyframes gameStartBackdropOut {
-  from {
-    opacity: 1;
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-  }
-  to {
-    opacity: 0;
-    backdrop-filter: blur(0);
-    -webkit-backdrop-filter: blur(0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .game-start-modal > .card-modal-backdrop.is-opening {
-    animation: modalBackdropIn 0.2s ease-out forwards;
-  }
-
-  .game-start-modal > .card-modal-backdrop.is-closing {
-    animation: modalBackdropOut 0.2s ease-in forwards;
-  }
+.card-modal-backdrop.is-closing,
+.modal-overlay.is-closing {
+  animation: modalBackdropOut 0.5s ease-in forwards;
 }
 
 .modal-panel {
@@ -1946,37 +2029,36 @@ a:hover {
   z-index: 1;
 }
 
-.modal-overlay.is-opening {
-  opacity: 0;
-  animation: modalBackdropIn 0.25s ease-out forwards;
-}
-
-.modal-overlay.is-closing {
-  animation: modalBackdropOut 0.2s ease-in forwards;
-}
-
 .modal-panel.is-opening {
-  animation: modalPanelIn 0.25s ease-out forwards;
+  animation: modalPanelIn 0.5s ease-out forwards;
 }
 
 .modal-panel.is-closing {
-  animation: modalPanelOut 0.2s ease-in forwards;
+  animation: modalPanelOut 0.5s ease-in forwards;
 }
 
 @keyframes modalBackdropIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes modalBackdropOut {
-  from { opacity: 1; }
-  to { opacity: 0; }
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 @keyframes modalPanelIn {
   from {
     opacity: 0;
-    transform: scale(0.92);
+    transform: scale(0.85);
   }
   to {
     opacity: 1;
@@ -1991,7 +2073,18 @@ a:hover {
   }
   to {
     opacity: 0;
-    transform: scale(0.95);
+    transform: scale(0.85);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-modal-backdrop.is-opening,
+  .modal-overlay.is-opening,
+  .modal-panel.is-opening,
+  .card-modal-backdrop.is-closing,
+  .modal-overlay.is-closing,
+  .modal-panel.is-closing {
+    animation-duration: 0.2s;
   }
 }
 
@@ -2145,7 +2238,8 @@ a:hover {
   margin: 0 0 0.35rem;
   font-family: var(--font-display);
   font-size: 1.4rem;
-  color: var(--gold);
+  font-weight: normal;
+  color: #fff;
   letter-spacing: 0.03em;
 }
 
@@ -2565,6 +2659,11 @@ a:hover {
 
 .hand-discard-pick-card:hover {
   border-color: var(--gold);
+}
+
+.hand-discard-pick-card.is-selected {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px rgba(201, 162, 77, 0.55);
 }
 
 .call-for-help-grid {

@@ -5,6 +5,7 @@ import {
   DNC,
   EVENT_DECK_IDS,
   getCard,
+  POSSESSED_IDS,
 } from "../../shared/cards.js";
 import type {
   DrawChoice,
@@ -55,7 +56,7 @@ import {
   declineReroll,
   hasPendingReroll,
 } from "./dice-reroll.js";
-import { continueWildCardDiscard, isWildCardDiscard, resumeCardRollEffect } from "./card-roll-resume.js";
+import { resolveKeepCards, resumeCardRollEffect } from "./card-roll-resume.js";
 import { hasPendingLighthouse, skipLighthouse, useLighthouse } from "./lighthouse.js";
 import {
   continueHandSizeDiscard,
@@ -92,6 +93,7 @@ export function createEmptyGame(mode: "solo" | "multi"): GameState {
     demonRevealed: false,
     modifiers: defaultModifiers(),
     pendingChoice: null,
+    pendingCardPool: null,
     pendingAiPlay: null,
     lastDiceRoll: null,
     diceRollerId: null,
@@ -133,7 +135,7 @@ export function setupPlayers(state: GameState, count: number, humanSlot = 0): vo
   }));
 }
 
-export function startGame(state: GameState, possessedId: string): void {
+export function startGame(state: GameState, possessedId: string, chosenDemonId?: string): void {
   const possessed = getCard(possessedId);
   const baseHp = possessed.hp ?? 10;
   state.possessedId = possessedId;
@@ -141,7 +143,10 @@ export function startGame(state: GameState, possessedId: string): void {
   state.possessedHp = baseHp;
   state.possessedMaxHp = baseHp;
 
-  const demonId = DEMON_IDS[Math.floor(Math.random() * DEMON_IDS.length)];
+  const demonId =
+    chosenDemonId && DEMON_IDS.includes(chosenDemonId)
+      ? chosenDemonId
+      : DEMON_IDS[Math.floor(Math.random() * DEMON_IDS.length)];
   const demonDef = getCard(demonId);
   state.demon = {
     instanceId: randomUUID(),
@@ -276,9 +281,18 @@ function applyActionInternal(state: GameState, playerId: string, action: GameAct
       } else {
         prepareRosterForStart(state);
       }
-      const possessedId = action.possessedId || state.lobbyPossessedId;
-      if (!possessedId) throw new Error("Player 1 must choose Possessed");
-      startGame(state, possessedId);
+      const requestedPossessed = action.possessedId || state.lobbyPossessedId || "";
+      let possessedId = requestedPossessed;
+      if (!possessedId || !POSSESSED_IDS.includes(possessedId)) {
+        if (state.mode === "solo") {
+          possessedId = POSSESSED_IDS[Math.floor(Math.random() * POSSESSED_IDS.length)];
+        } else {
+          throw new Error("Player 1 must choose Possessed");
+        }
+      }
+      const demonId =
+        action.demonId && DEMON_IDS.includes(action.demonId) ? action.demonId : undefined;
+      startGame(state, possessedId, demonId);
       return;
     case "CHOOSE_DRAW":
       handleDrawChoice(state, playerId, action.choice);
@@ -358,7 +372,6 @@ function applyActionInternal(state: GameState, playerId: string, action: GameAct
       const pending = state.pendingChoice;
       const wasPoopPatrol = isPoopPatrolDiscard(pending);
       const wasRuleBookOverflow = pending?.kind === "discard_cards" && pending.cardId === RULE_BOOK_CARD_ID;
-      const wasWildCard = isWildCardDiscard(pending);
       const pendingEffectId = pending?.cardId ? getCard(pending.cardId).effectId : undefined;
       if (hasPendingReroll(state) && pending?.kind === "discard_cards") {
         completeRerollAfterDiscard(state, ownerId, action.cardInstanceIds);
@@ -372,10 +385,14 @@ function applyActionInternal(state: GameState, playerId: string, action: GameAct
           continueHandSizeDiscard(state, ownerId);
         } else if (wasRuleBookOverflow) {
           continueHandSizeDiscardWithCard(state, ownerId, RULE_BOOK_CARD_ID);
-        } else if (wasWildCard) {
-          continueWildCardDiscard(state, ownerId);
         }
       }
+      stampSoloController(state);
+      break;
+    }
+    case "KEEP_CARDS": {
+      const ownerId = assertPendingController(state, playerId);
+      resolveKeepCards(state, ownerId, action.cardInstanceIds);
       stampSoloController(state);
       break;
     }
@@ -476,6 +493,7 @@ export function applyAction(state: GameState, playerId: string, action: GameActi
     action.type !== "RESOLVE_PICK_ONE" &&
     action.type !== "SELECT_TARGET" &&
     action.type !== "DISCARD_CARDS" &&
+    action.type !== "KEEP_CARDS" &&
     action.type !== "DISTRIBUTE_ENERGY" &&
     action.type !== "RULE_BOOK_TRANSFER" &&
     !isIntroAck
@@ -841,6 +859,7 @@ function handleRestVote(state: GameState, playerId: string, vote: boolean): void
 
 function handleTriggerRoll(state: GameState, playerId: string): void {
   if (state.phase !== "triggers") return;
+  if (!state.introAcknowledged) return;
   if (state.presentationHold || hasPendingReroll(state)) return;
   beginDiceRoll(state, playerId, "trigger");
 }

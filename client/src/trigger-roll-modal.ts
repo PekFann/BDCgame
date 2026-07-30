@@ -11,7 +11,6 @@ import {
   showRollResultWaiting,
   whenDiceAnimSettled,
 } from "./dice-animation.js";
-import { isGameIntroDismissed } from "./game-start-modal.js";
 import { closeAnimatedModal, forceCloseModal, openAnimatedModal } from "./modal-animations.js";
 
 type SendFn = (action: GameAction) => void;
@@ -43,6 +42,7 @@ let acceptedRerollBaselineRoll: number | null = null;
 let resolvingPollId: ReturnType<typeof setInterval> | null = null;
 let eventRollRefreshRetryScheduled = false;
 let cardRollRefreshRetryScheduled = false;
+let triggerRollRefreshRetryScheduled = false;
 
 function isTimeTravelDiscardPending(pub: PublicGameState): boolean {
   return pub.pendingChoice?.kind === "discard_cards" && !!pub.pendingRerollPrompt;
@@ -185,7 +185,8 @@ function openTriggerModalIfHidden(
 }
 
 function introAllowsTriggerModal(pub: PublicGameState): boolean {
-  return isGameIntroDismissed() || pub.introAcknowledged;
+  // Server ack only — local dismiss alone must not auto-send ROLL_DICE.
+  return !!pub.introAcknowledged;
 }
 
 function currentRoll(pub: PublicGameState): number | null {
@@ -578,6 +579,26 @@ export function refreshTriggerRollModal(
     return;
   }
 
+  // Cycle 1 intro gate: phase may already be triggers before ACK_GAME_INTRO.
+  const holdAt = pub.presentationHold?.at;
+  if (
+    pub.cycle === 1 &&
+    !pub.introAcknowledged &&
+    holdAt !== "post_trigger_roll" &&
+    holdAt !== "post_event_roll" &&
+    holdAt !== "post_card_roll"
+  ) {
+    clearResolvingPoll();
+    resetTriggerRollClientFlags();
+    outcomePresentedKey = "";
+    eventRollPresentedKey = "";
+    cardRollPresentedKey = "";
+    if (!root.hidden && !presentationRunning && !diceAnimRunning) {
+      closeAnimatedModal(root, panel, () => {});
+    }
+    return;
+  }
+
   if (pub.phase !== "triggers" && !isCardRollFlowActive(pub)) {
     clearResolvingPoll();
     resetTriggerRollClientFlags();
@@ -641,12 +662,23 @@ export function refreshTriggerRollModal(
     clearResolvingPoll();
     if (isTriggerRollOutcomePresented(pub)) return;
     openTriggerModalIfHidden(root, panel, pub.presentationHold.roll);
-    // Retry until Continue/outcome is shown (guards against silent stalls on Resolving…).
     if (
       !isTriggerRollPresentationRunning() &&
       !isTriggerRollOutcomePresented(pub)
     ) {
+      triggerRollRefreshRetryScheduled = false;
       void runTriggerRollPresentationIfNeeded(pub, send, getPub, onDiceAnimComplete);
+    } else if (
+      isTriggerRollPresentationRunning() &&
+      !isTriggerRollOutcomePresented(pub) &&
+      !triggerRollRefreshRetryScheduled
+    ) {
+      triggerRollRefreshRetryScheduled = true;
+      requestAnimationFrame(() => {
+        triggerRollRefreshRetryScheduled = false;
+        const latest = getPub?.() ?? pub;
+        refreshTriggerRollModal(latest, priv, send, getPub, onDiceAnimComplete);
+      });
     }
     return;
   }
@@ -701,8 +733,12 @@ export function refreshTriggerRollModal(
     return;
   }
 
-  // Server is source of truth: stuck rollSent must not block a legal ROLL_DICE.
-  if ((priv?.legalActions ?? []).some((a) => a.type === "ROLL_DICE")) {
+  // Server is source of truth: stuck rollSent must not block a legal ROLL_DICE after intro.
+  if (
+    pub.introAcknowledged &&
+    currentRoll(pub) === null &&
+    (priv?.legalActions ?? []).some((a) => a.type === "ROLL_DICE")
+  ) {
     rollSent = false;
   }
 
@@ -745,6 +781,7 @@ export function resetTriggerRollClientFlags(): void {
   acceptedRerollBaselineRoll = null;
   eventRollRefreshRetryScheduled = false;
   cardRollRefreshRetryScheduled = false;
+  triggerRollRefreshRetryScheduled = false;
   clearResolvingPoll();
 }
 

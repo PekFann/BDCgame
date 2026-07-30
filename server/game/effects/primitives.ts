@@ -468,13 +468,22 @@ export function payCardCosts(state: GameState, player: PlayerState, cardId: stri
 }
 
 export function drawForPlayer(state: GameState, player: PlayerState, count = 1): void {
+  for (const card of drawCardsFromDeck(state, count)) {
+    addToHand(state, player, card);
+  }
+}
+
+/** Draw from the action deck without adding to a hand (reshuffles discard if needed). */
+export function drawCardsFromDeck(state: GameState, count: number): { instanceId: string; cardId: string }[] {
+  const drawn: { instanceId: string; cardId: string }[] = [];
   for (let i = 0; i < count; i++) {
     if (state.actionDeck.length === 0) {
       state.actionDeck = state.actionDiscard.splice(0);
     }
     if (state.actionDeck.length === 0) break;
-    addToHand(state, player, state.actionDeck.pop()!);
+    drawn.push(state.actionDeck.pop()!);
   }
+  return drawn;
 }
 
 export function spawnImpFromDeck(state: GameState, cardId: string): void {

@@ -90,10 +90,7 @@ export function findDemon(state: GameState, targetId: string) {
 export function canTargetDemon(state: GameState, demon: { instanceId: string; cardId: string; revealed: boolean; isImp: boolean; hp: number }) {
   const def = getCard(demon.cardId);
   if (!demon.isImp && !state.demonRevealed) return false;
-  if (def.effectId === "imp_selfish") {
-    if (!state.demonRevealed && state.demon && state.demon.hp > 10) return false;
-    if (state.demon && state.demon.hp > 10 && !demon.isImp) return false;
-  }
+  // Selfish Imp is always targetable while alive (even if main demon is still hidden).
   if (def.effectId === "imp_stubborn" && !demon.isImp) {
     const stubborn = state.imps.find((i) => getCard(i.cardId).effectId === "imp_stubborn" && i.hp > 0);
     if (stubborn) return false;

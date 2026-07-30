@@ -150,21 +150,37 @@ export function getLegalActions(state: GameState, player: PlayerState): GameActi
         actions.push({ type: "RESOLVE_PICK_ONE", optionId: opt.id });
       }
     }
-    if (pending.targets) {
+    if (pending.kind === "select_target" && pending.targets) {
       for (const t of pending.targets) {
         actions.push({ type: "SELECT_TARGET", targetId: t });
       }
     }
     if (pending.kind === "discard_cards" && owner && owner.hand.length) {
-      actions.push({
-        type: "DISCARD_CARDS",
-        cardInstanceIds: [owner.hand[0].instanceId],
-      });
+      const eligible =
+        pending.cardId === "action_11"
+          ? owner.hand.filter((c) => getCard(c.cardId).effectId !== "time_travel")
+          : owner.hand;
+      if (eligible.length) {
+        actions.push({
+          type: "DISCARD_CARDS",
+          cardInstanceIds: [eligible[0].instanceId],
+        });
+      }
     }
     if (pending.kind === "distribute_energy") {
       actions.push({
         type: "DISTRIBUTE_ENERGY",
         distribution: buildEnergyDistribution(state, pending.amount ?? 5, pending.playerId),
+      });
+    }
+    if (pending.kind === "rule_book" && pending.targets?.length) {
+      const targetId = pending.targets[0];
+      actions.push({
+        type: "RULE_BOOK_TRANSFER",
+        direction: "give",
+        targetId,
+        resource: "energy",
+        amount: 1,
       });
     }
     if (state.pendingRerollPrompt) return actions;
@@ -204,13 +220,27 @@ export function pickAiAction(state: GameState, player: PlayerState): GameAction 
   } else if (state.pendingChoice?.playerId === player.id) {
     const pending = state.pendingChoice;
     if (pending.options?.length) {
+      if (pending.kind === "prayer_combo") {
+        const withPartner = pending.options.find((o) => o.id.startsWith("with:"));
+        return { type: "RESOLVE_PICK_ONE", optionId: withPartner?.id ?? pending.options[0].id };
+      }
+      if (pending.kind === "prayer_combo_confirm") {
+        const accept = pending.options.find((o) => o.id === "accept");
+        return { type: "RESOLVE_PICK_ONE", optionId: accept?.id ?? pending.options[0].id };
+      }
       return { type: "RESOLVE_PICK_ONE", optionId: pending.options[0].id };
     }
-    if (pending.targets?.length) {
+    if (pending.kind === "select_target" && pending.targets?.length) {
       return { type: "SELECT_TARGET", targetId: pending.targets[0] };
     }
     if (pending.kind === "discard_cards" && player.hand.length) {
-      return { type: "DISCARD_CARDS", cardInstanceIds: [player.hand[0].instanceId] };
+      const eligible =
+        pending.cardId === "action_11"
+          ? player.hand.filter((c) => getCard(c.cardId).effectId !== "time_travel")
+          : player.hand;
+      if (eligible.length) {
+        return { type: "DISCARD_CARDS", cardInstanceIds: [eligible[0].instanceId] };
+      }
     }
     if (pending.kind === "distribute_energy") {
       return {
@@ -242,13 +272,6 @@ export function pickAiAction(state: GameState, player: PlayerState): GameAction 
     if (cardId && hasPlayableCard(state, player)) {
       return { type: "PLAY_CARD", cardInstanceId: cardId };
     }
-  }
-
-  if (canVoteRest(state, player)) {
-    const shouldRest =
-      (state.phase === "day" && player.hand.length <= 1) ||
-      (state.phase === "night" && player.energy <= 1);
-    if (shouldRest) return { type: "REST_VOTE", vote: true };
   }
 
   return null;

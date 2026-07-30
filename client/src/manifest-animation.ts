@@ -1,8 +1,27 @@
 import type { ManifestPreview } from "../../shared/types.js";
 import { playDemonAttackSound } from "./audio.js";
+import { spawnHtmlFloater } from "./vfx/floater.js";
+import { ensureVfxLayer } from "./vfx/layer.js";
+import { getFloaterPreset, HEALTH_ICON_URL } from "./vfx/presets.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function manifestDamageFloaterMarkup(amount: number): string {
+  return `<span class="draw-reward-float-part">-${amount} <img class="draw-reward-float-icon" src="${HEALTH_ICON_URL}" alt="Health" /></span>`;
+}
+
+function spawnManifestDamageFloater(possessed: Element, amount: number): void {
+  if (amount <= 0 || !(possessed instanceof HTMLElement)) return;
+  const layer = ensureVfxLayer();
+  const rect = possessed.getBoundingClientRect();
+  spawnHtmlFloater(
+    layer,
+    rect,
+    manifestDamageFloaterMarkup(amount),
+    getFloaterPreset("manifest_damage_floater")
+  );
 }
 
 export async function runManifestAnimation(
@@ -32,6 +51,7 @@ export async function runManifestAnimation(
   // Apply hit almost immediately (was 420ms); toast wait already shortened by 500ms.
   await sleep(0);
   possessed.classList.add("manifest-hit");
+  spawnManifestDamageFloater(possessed, preview.totalDamage);
 
   const flash = document.createElement("div");
   flash.className = "board-flash";

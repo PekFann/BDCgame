@@ -1,3 +1,5 @@
+import type { VfxSoundId } from "./vfx/types.js";
+
 const CARD_DRAW_SRC = "/Audios/cardDraw.wav";
 const DICE_ROLL_SRC = encodeURI("/Audios/Dice Roll 01.mp3");
 const MAGIC_POP_SRC = encodeURI("/Audios/Magic Pop 01.mp3");
@@ -98,5 +100,56 @@ export function cancelPendingDiceRollSound(): void {
   if (pendingDiceRollSoundTimer !== null) {
     clearTimeout(pendingDiceRollSoundTimer);
     pendingDiceRollSoundTimer = null;
+  }
+}
+
+export const VFX_SOUND_CATALOG: { id: VfxSoundId; label: string }[] = [
+  { id: "none", label: "None" },
+  { id: "magic_pop", label: "Magic Pop" },
+  { id: "magic_potion", label: "Magic Potion" },
+  { id: "demon_attack", label: "Demon Attack" },
+  { id: "card_draw", label: "Card Draw" },
+  { id: "dice_roll", label: "Dice Roll" },
+];
+
+function playSoundById(soundId: VfxSoundId): void {
+  switch (soundId) {
+    case "magic_pop":
+      playMagicPopSound();
+      break;
+    case "magic_potion":
+      playMagicPotionSound();
+      break;
+    case "demon_attack":
+      playDemonAttackSound();
+      break;
+    case "card_draw":
+      playCardDrawSound();
+      break;
+    case "dice_roll":
+      playDiceRollSound();
+      break;
+    case "none":
+    default:
+      break;
+  }
+}
+
+let pendingVfxSoundTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function playVfxSound(soundId: VfxSoundId, delayMs = 0): void {
+  if (soundId === "none") return;
+  if (pendingVfxSoundTimer !== null) {
+    clearTimeout(pendingVfxSoundTimer);
+    pendingVfxSoundTimer = null;
+  }
+  const play = () => playSoundById(soundId);
+  if (delayMs > 0) {
+    pendingVfxSoundTimer = setTimeout(() => {
+      pendingVfxSoundTimer = null;
+      play();
+    }, delayMs);
+  } else {
+    play();
   }
 }

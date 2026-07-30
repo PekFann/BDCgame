@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VFX Editor — BDC</title>
+    <link rel="stylesheet" href="/src/styles/main.css" />
+    <link rel="stylesheet" href="/src/styles/vfx-editor.css" />
+    <script type="module" src="/src/ambient-bg.ts"></script>
+  </head>
+  <body class="vfx-editor-body">
+    <header class="vfx-editor-header">
+      <h1>Particle VFX Editor</h1>
+      <p><a href="/">Back</a></p>
+    </header>
+    <div class="vfx-editor-layout">
+      <aside class="vfx-editor-sidebar" id="vfx-sidebar">
+        <label class="vfx-field">
+          <span>Effect</span>
+          <select id="vfx-preset-select"></select>
+        </label>
+        <label class="vfx-field">
+          <span>Anchor</span>
+          <select id="vfx-anchor-select">
+            <option value="possessed">Possessed</option>
+            <option value="demon">Demon</option>
+            <option value="roster">Roster (friendship)</option>
+          </select>
+        </label>
+        <label class="vfx-field" id="vfx-amount-field">
+          <span>Amount (+N)</span>
+          <input type="number" id="vfx-amount" min="1" max="99" value="3" />
+        </label>
+        <label class="vfx-field vfx-field--checkbox" id="vfx-solo-ai-field">
+          <input type="checkbox" id="vfx-solo-ai" />
+          <span>Solo AI scale</span>
+        </label>
+        <div id="vfx-sliders" class="vfx-sliders"></div>
+        <p class="vfx-editor-hint" id="vfx-upload-warn" hidden></p>
+        <div class="vfx-editor-actions">
+          <button type="button" class="btn" id="vfx-play">Play</button>
+          <button type="button" class="btn secondary" id="vfx-reset">Reset preset</button>
+        </div>
+        <label class="vfx-field">
+          <span>JSON</span>
+          <textarea id="vfx-json" rows="10" readonly></textarea>
+        </label>
+        <button type="button" class="btn" id="vfx-save">Save to project</button>
+        <button type="button" class="btn secondary" id="vfx-copy">Copy JSON</button>
+        <p class="vfx-editor-hint" id="vfx-status" hidden></p>
+        <p class="vfx-editor-hint">
+          Save writes to client/src/vfx/presets.user.json (merged on load). Custom images go to
+          public/vfx/custom/.
+        </p>
+      </aside>
+      <main class="vfx-editor-stage-wrap">
+        <div id="vfx-stage" class="vfx-editor-stage board-stage">
+          <div class="board-hero">
+            <div class="card-slot possessed" data-vfx-anchor="possessed">
+              <img src="/cards/possessed.png" alt="Possessed" />
+              <span class="label">Possessed</span>
+            </div>
+            <div class="card-slot demon" data-vfx-anchor="demon">
+              <img src="/cards/demon-cover.png" alt="Demon" />
+              <span class="label">Demon</span>
+            </div>
+          </div>
+          <div class="player-roster">
+            <div class="player-roster-row is-human" data-vfx-anchor="roster">
+              <span class="player-roster-name">Player 1</span>
+              <div class="player-roster-values">
+                <span class="roster-stat" title="Energy"
+                  ><img class="roster-stat-icon" src="/icons/energy.png" alt="Energy" />3</span
+                >
+                <span class="roster-stat" title="Friendship"
+                  ><img class="roster-stat-icon" src="/icons/friendship.png" alt="Friendship" />2</span
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <script type="module" src="/src/vfx-editor.ts"></script>
+  </body>
+</html>

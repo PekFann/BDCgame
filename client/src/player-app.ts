@@ -25,6 +25,7 @@ import { refreshDemonTargetModal } from "./demon-target-modal.js";
 import { refreshHandDiscardModal } from "./hand-discard-modal.js";
 import { refreshCallForHelpModal } from "./call-for-help-modal.js";
 import { refreshCoffeeBreakModal } from "./coffee-break-modal.js";
+import { refreshRuleBookModal } from "./rule-book-modal.js";
 import { refreshLighthouseModal } from "./lighthouse-modal.js";
 import { initFullscreenButton } from "./fullscreen.js";
 import {
@@ -261,6 +262,7 @@ export function initPlayerApp(config: PlayerAppConfig): GameClient {
       refreshHandDiscardModal(pub, priv, send, human.id);
       refreshCallForHelpModal(pub, send, human.id);
       refreshCoffeeBreakModal(pub, send, human.id);
+      refreshRuleBookModal(pub, priv, send, human.id);
       refreshDemonTargetModal(pub, priv, send);
       refreshLighthouseModal(pub, priv, send);
 
@@ -339,6 +341,7 @@ export function initPlayerApp(config: PlayerAppConfig): GameClient {
       refreshHandDiscardModal(pub, priv, send, human.id);
       refreshCallForHelpModal(pub, send, human.id);
       refreshCoffeeBreakModal(pub, send, human.id);
+      refreshRuleBookModal(pub, priv, send, human.id);
       refreshDemonTargetModal(pub, priv, send);
       refreshLighthouseModal(pub, priv, send);
     });

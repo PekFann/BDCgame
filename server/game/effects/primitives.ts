@@ -449,6 +449,9 @@ export function canPlayCard(state: GameState, player: PlayerState, cardId: strin
     if (player.hand.length < 2) return false;
     if (legalDamageTargets(state).length === 0) return false;
   }
+  if (def.effectId === "chain_broken") {
+    if (legalDamageTargets(state).length === 0) return false;
+  }
   if (def.effectId === "contract_breaker") {
     if (state.possessedHp <= 0) return false;
     if (legalDamageTargets(state).length === 0) return false;

@@ -1,4 +1,5 @@
 import type { GameAction, PrivateGameState, PublicGameState } from "../../shared/types.js";
+import cardsData from "../../data/cards.json";
 import { cardImg, cardName } from "./ws-client.js";
 import { forceCloseCardModal, isCardModalOpen } from "./card-modal.js";
 import { isGiftsDiscardPending, snapshotPossessedHpBeforeHeal } from "./heal-vfx.js";
@@ -6,6 +7,14 @@ import { closeAnimatedModal, forceCloseModal, openAnimatedModal } from "./modal-
 import { humanControlsPending, pendingOwnerHand } from "./pending-choice-ui.js";
 
 type SendFn = (action: GameAction) => void;
+
+const cardEffectById = Object.fromEntries(
+  (cardsData as { id: string; effectId?: string }[]).map((c) => [c.id, c.effectId ?? ""])
+);
+
+function isTimeTravelCardId(cardId: string): boolean {
+  return cardEffectById[cardId] === "time_travel";
+}
 
 let modalEl: HTMLElement | null = null;
 let panelEl: HTMLElement | null = null;
@@ -84,8 +93,12 @@ export function refreshHandDiscardModal(
   const min = pending!.minDiscard ?? 1;
   const max = pending!.maxDiscard ?? min;
   const ownerHand = pendingOwnerHand(pub, priv);
+  const excludeTimeTravel = pending!.cardId === "action_11";
+  const cards = excludeTimeTravel
+    ? ownerHand.filter((c) => !isTimeTravelCardId(c.cardId))
+    : ownerHand;
 
-  for (const card of ownerHand) {
+  for (const card of cards) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "hand-discard-pick-card";
@@ -101,7 +114,15 @@ export function refreshHandDiscardModal(
     grid.appendChild(btn);
   }
 
-  if (root.hidden) openAnimatedModal(root, panel);
+  if (root.hidden) {
+    const preserveTrigger =
+      !!pub.pendingRerollPrompt || pending?.cardId === "action_11";
+    openAnimatedModal(
+      root,
+      panel,
+      preserveTrigger ? { preserveModalIds: ["trigger-roll-modal"] } : undefined
+    );
+  }
 }
 
 export function resetHandDiscardModal(): void {

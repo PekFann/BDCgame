@@ -8,7 +8,7 @@ import {
 } from "./card-animations.js";
 import { runDicePresentation } from "./dice-animation.js";
 import { runManifestAnimation } from "./manifest-animation.js";
-import { showManifestToast } from "./phase-toast.js";
+import { showCycleStartToast, showManifestToast } from "./phase-toast.js";
 import {
   scheduleFriendshipGainVfx,
   scheduleTeamFriendshipGainVfx,
@@ -21,12 +21,10 @@ import {
 } from "./friendship-vfx.js";
 import {
   isTriggerRollOutcomePresented,
-  isTriggerRollPresentationRunning,
-  runCardRollPresentationIfNeeded,
   isEventRollOutcomePresented,
   isCardRollOutcomePresented,
 } from "./trigger-roll-modal.js";
-import { getHandCardVisualClass, renderHand, type HandRenderContext } from "./ws-client.js";
+import { renderHand, type HandRenderContext } from "./ws-client.js";
 
 type SendFn = (action: GameAction) => void;
 
@@ -47,6 +45,7 @@ function holdKey(pub: PublicGameState): string {
   if (!h) return "";
   const phaseTag = `${pub.cycle}-${pub.dncPhaseIndex}`;
   if (h.at === "manifest") return `manifest-${phaseTag}`;
+  if (h.at === "cycle_start") return `cycle_start-${h.cycle}`;
   if (h.at === "post_trigger_roll") return `trigger-${phaseTag}-${h.roll}-${h.outcome}`;
   if (h.at === "post_draw") {
     return `post_draw-${phaseTag}-${h.choice}-${h.playerId ?? ""}`;
@@ -122,7 +121,7 @@ async function animatePlayerHandDraw(
       prevIds,
       hand,
       onRender,
-      (card) => getHandCardVisualClass(pub.phase, card.cardId, pub),
+      undefined,
       handCtx
     );
   } else {
@@ -171,6 +170,14 @@ export async function handlePresentationUpdate(
   isPresenting = true;
 
   try {
+    if (hold.at === "cycle_start") {
+      showCycleStartToast(hold.cycle);
+      await sleep(1500);
+      await ackPresentationIfHuman(ctx);
+      lastHoldKey = key;
+      return ctx.prevHandIds;
+    }
+
     if (hold.at === "manifest") {
       if (pub.pendingLighthousePrompt) {
         return ctx.prevHandIds;
@@ -214,21 +221,8 @@ export async function handlePresentationUpdate(
     }
 
     if (hold.at === "post_card_roll") {
-      try {
-        if (ctx.mode !== "tv") {
-          while (isTriggerRollPresentationRunning()) {
-            await sleep(50);
-          }
-          const presented = await runCardRollPresentationIfNeeded(pub, ctx.send);
-          if (presented || isCardRollOutcomePresented(pub)) {
-            lastHoldKey = key;
-          }
-        }
-      } catch (err) {
-        if (import.meta.env.DEV) {
-          console.warn("Card roll presentation failed:", err);
-        }
-      }
+      // Refresh owns the card-roll modal (same as post_event_roll).
+      lastHoldKey = key;
       return ctx.prevHandIds;
     }
 
@@ -312,6 +306,7 @@ export async function handlePresentationUpdate(
       } else if (hold.reward === "energy") {
         await sleep(600);
       }
+      await sleep(1000);
       await ackPresentationIfHuman(ctx);
       lastHoldKey = key;
       return ctx.prevHandIds;

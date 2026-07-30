@@ -13,7 +13,6 @@ import {
   renderHandLabel,
   renderPhaseActions,
   renderPossessedPanelActions,
-  getHandCardVisualClass,
   type HandRenderContext,
 } from "./ws-client.js";
 import {
@@ -48,6 +47,7 @@ import { refreshDemonTargetModal, resetDemonTargetModal } from "./demon-target-m
 import { refreshHandDiscardModal, resetHandDiscardModal } from "./hand-discard-modal.js";
 import { refreshCallForHelpModal, resetCallForHelpModal } from "./call-for-help-modal.js";
 import { refreshCoffeeBreakModal, resetCoffeeBreakModal } from "./coffee-break-modal.js";
+import { refreshRuleBookModal, resetRuleBookModal } from "./rule-book-modal.js";
 import { refreshLighthouseModal, resetLighthouseModal } from "./lighthouse-modal.js";
 import { playBoardDamageVfx, resetBoardDamageVfx } from "./board-damage-vfx.js";
 import { initFullscreenButton } from "./fullscreen.js";
@@ -254,7 +254,7 @@ function renderSelectedHand(
       capturedPrev,
       currentHand,
       (handToShow) => renderHand(handEl, handToShow, handCtx),
-      (card) => getHandCardVisualClass(pub.phase, card.cardId, pub),
+      undefined,
       handCtx
     ).then(() => {
       setPrevHandIdsForPlayer(viewingId, currentHand);
@@ -301,6 +301,7 @@ function refreshGameplayModals(
   refreshHandDiscardModal(pub, priv, send, humanPlayerId);
   refreshCallForHelpModal(pub, send, humanPlayerId);
   refreshCoffeeBreakModal(pub, send, humanPlayerId);
+  refreshRuleBookModal(pub, priv, send, humanPlayerId);
   refreshDemonTargetModal(pub, priv, send);
   refreshLighthouseModal(pub, priv, send);
   refreshPhaseToast(pub);
@@ -440,6 +441,7 @@ function renderGameUI(): void {
     refreshGameplayModals(pub, priv, send, humanPlayerId, modalCtx);
 
     if (pub.presentationHold) {
+      const holdAtStart = pub.presentationHold;
       void handlePresentationUpdate(pub, {
         boardRoot: document.getElementById("board")!,
         handRoot: handEl,
@@ -490,7 +492,12 @@ function renderGameUI(): void {
           };
         },
       }).then((ids) => {
-        syncPrevHandIdsForPlayer(humanPlayerId, ids);
+        // Effect draws (e.g. Prayer) animate hold.playerId — sync under that id, not the human.
+        const syncId =
+          holdAtStart.at === "post_draw" && holdAtStart.playerId
+            ? holdAtStart.playerId
+            : humanPlayerId;
+        syncPrevHandIdsForPlayer(syncId, ids);
         const latestPub = client.publicState;
         const latestPriv = client.privateState ?? undefined;
         if (!latestPub || !latestPriv) return;
@@ -634,6 +641,7 @@ async function init() {
       resetHandDiscardModal();
       resetCallForHelpModal();
       resetCoffeeBreakModal();
+      resetRuleBookModal();
       resetLighthouseModal();
       resetBoardDamageVfx();
       resetPhaseToast();

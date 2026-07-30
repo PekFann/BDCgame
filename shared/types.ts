@@ -97,18 +97,24 @@ export interface PendingChoice {
     | "event_pick_one"
     | "donut_bandit"
     | "haunted_pizza"
-    | "pick_action_discard";
+    | "pick_action_discard"
+    | "prayer_combo"
+    | "prayer_combo_confirm";
   /** Effect/card owner — pays costs and receives effects. */
   playerId: string;
   /** Who may resolve this choice; defaults to playerId. */
   controllerPlayerId?: string;
+  /** Prayer combo confirm: original Prayer caster. */
+  relatedPlayerId?: string;
   cardInstanceId?: string;
   cardId?: string;
-  options?: { id: string; label: string }[];
+  options?: { id: string; label: string; cardId?: string }[];
   minDiscard?: number;
   maxDiscard?: number;
   amount?: number;
   targets?: string[];
+  /** Instant Access / Call for Help: which pile to pick from (default discard). */
+  searchPile?: "discard" | "deck";
 }
 
 export interface PendingAiPlay {
@@ -153,6 +159,7 @@ export type PresentationHold =
   | { at: "post_draw"; choice: DrawChoice; playerId?: string }
   | { at: "post_rest"; reward: "draw" | "energy"; playerId?: string }
   | { at: "manifest"; preview: ManifestPreview }
+  | { at: "cycle_start"; cycle: number }
   | { at: "post_trigger_roll"; roll: number; outcome: TriggerOutcome; eventCardId?: string }
   | { at: "post_event_roll"; roll: number; effectId: string; playerId: string }
   | {
@@ -322,7 +329,14 @@ export type GameAction =
   | { type: "SELECT_TARGET"; targetId: string }
   | { type: "DISCARD_CARDS"; cardInstanceIds: string[] }
   | { type: "DISTRIBUTE_ENERGY"; distribution: Record<string, number> }
-  | { type: "RULE_BOOK_TRANSFER"; targetId: string; energy?: number; friendship?: number; cards?: string[] }
+  | {
+      type: "RULE_BOOK_TRANSFER";
+      direction: "give" | "take";
+      targetId: string;
+      resource: "energy" | "friendship" | "cards";
+      amount?: number;
+      cardInstanceIds?: string[];
+    }
   | { type: "ROLL_DICE" }
   | { type: "CONFIRM_AI_PLAY" }
   | { type: "SKIP_AI_PLAY" }

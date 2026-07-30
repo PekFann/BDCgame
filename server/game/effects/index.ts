@@ -3,6 +3,7 @@ export {
   resolveDiscardEffect,
   resolveEnergyDistribution,
   resolvePickOne,
+  resolveRuleBookTransfer,
   resolveTarget,
   startPlayCard,
 } from "./actions.js";

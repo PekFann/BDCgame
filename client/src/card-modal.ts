@@ -1,7 +1,13 @@
 import type { CardInstance, GameAction, PrivateGameState, PublicGameState } from "../../shared/types.js";
 import cardsData from "../../data/cards.json";
 import { CARD_PICK_ONE_OPTIONS, isPickOneEffect } from "./card-play-options.js";
-import { DIRECT_FRIENDSHIP_EFFECT_IDS, isFriendshipGainOption, snapshotFriendshipBeforeChoice } from "./friendship-vfx.js";
+import {
+  DIRECT_FRIENDSHIP_EFFECT_IDS,
+  directFriendshipGainAmount,
+  markPendingFriendshipGain,
+  prepareFriendshipGainOption,
+  snapshotFriendshipBeforeChoice,
+} from "./friendship-vfx.js";
 import { isHealGainOption, snapshotPossessedHpBeforeHeal } from "./heal-vfx.js";
 import { closeAnimatedModal, forceCloseModal, openAnimatedModal } from "./modal-animations.js";
 import { humanControlsPending, isBoardMountedEventPending } from "./pending-choice-ui.js";
@@ -11,10 +17,14 @@ import { isInputLocked } from "./input-lock.js";
 type SendFn = (action: GameAction) => void;
 type ModalMode = "preview" | "resolve";
 
-function snapshotIfFriendshipGain(pub: PublicGameState, humanPlayerId: string, optionId: string): void {
-  if (isFriendshipGainOption(optionId)) {
-    snapshotFriendshipBeforeChoice(pub, humanPlayerId);
-  }
+function beneficiaryPlayerId(): string {
+  return openOwnerPlayerId || humanPlayerId;
+}
+
+function snapshotIfFriendshipGain(pub: PublicGameState, optionId: string): void {
+  const ownerId =
+    pub.pendingChoice?.playerId || openOwnerPlayerId || humanPlayerId;
+  prepareFriendshipGainOption(pub, ownerId, optionId);
   if (isHealGainOption(optionId)) {
     snapshotPossessedHpBeforeHeal(pub);
   }
@@ -273,9 +283,15 @@ function renderModalButtons(
       addBtn(
         opt.label,
         () => {
-          snapshotIfFriendshipGain(pub, humanPlayerId, opt.id);
+          snapshotIfFriendshipGain(pub, opt.id);
           send({ type: "RESOLVE_PICK_ONE", optionId: opt.id });
-          if (opt.id !== "damage") forceCloseCardModal();
+          const keepOpen =
+            opt.id === "damage" ||
+            opt.id === "alone" ||
+            opt.id === "accept" ||
+            opt.id === "decline" ||
+            opt.id.startsWith("with:");
+          if (!keepOpen) forceCloseCardModal();
         },
         true,
         disabled
@@ -304,9 +320,9 @@ function renderModalButtons(
       addBtn(
         opt.label,
         () => {
-          snapshotIfFriendshipGain(pub, humanPlayerId, opt.id);
+          snapshotIfFriendshipGain(pub, opt.id);
           send(playCardAction(instanceId, opt.id));
-          if (opt.id === "draw") {
+          if (opt.id === "draw" || opt.id === "friendship" || opt.id === "friendship2" || isHealOption(opt.id)) {
             forceCloseCardModal();
           }
         },
@@ -324,12 +340,17 @@ function renderModalButtons(
       "Play Card",
       () => {
         if (def?.effectId && DIRECT_FRIENDSHIP_EFFECT_IDS.has(def.effectId)) {
-          snapshotFriendshipBeforeChoice(pub, humanPlayerId);
+          const ownerId = beneficiaryPlayerId();
+          snapshotFriendshipBeforeChoice(pub, ownerId);
+          markPendingFriendshipGain(ownerId, directFriendshipGainAmount(def.effectId));
         }
         if (def?.effectId === "gifts") {
           snapshotPossessedHpBeforeHeal(pub);
         }
         send(playCardAction(instanceId));
+        if (def?.effectId && DIRECT_FRIENDSHIP_EFFECT_IDS.has(def.effectId)) {
+          forceCloseCardModal();
+        }
       },
       true,
       giftsBlocked

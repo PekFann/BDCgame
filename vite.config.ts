@@ -26,6 +26,8 @@ export default defineConfig({
         tv: resolve(__dirname, "client/tv.html"),
         play: resolve(__dirname, "client/play.html"),
         gallery: resolve(__dirname, "client/gallery.html"),
+        vfxEditor: resolve(__dirname, "client/vfx-editor.html"),
+        diceEditor: resolve(__dirname, "client/dice-editor.html"),
       },
     },
   },

@@ -21,6 +21,9 @@ import {
   resolveEnergyDistribution,
   resolvePickActionDiscard,
   resolvePickOne,
+  resolvePrayerCombo,
+  resolvePrayerComboConfirm,
+  resolveRuleBookTransfer,
   resolveTarget,
   startPlayCard,
 } from "./effects/actions.js";
@@ -52,8 +55,15 @@ import {
   declineReroll,
   hasPendingReroll,
 } from "./dice-reroll.js";
-import { resumeCardRollEffect } from "./card-roll-resume.js";
+import { continueWildCardDiscard, isWildCardDiscard, resumeCardRollEffect } from "./card-roll-resume.js";
 import { hasPendingLighthouse, skipLighthouse, useLighthouse } from "./lighthouse.js";
+import {
+  continueHandSizeDiscard,
+  continueHandSizeDiscardWithCard,
+  isPoopPatrolDiscard,
+  RULE_BOOK_CARD_ID,
+  startOverflowDiscardForPlayer,
+} from "./hand-size-discard.js";
 
 export function createEmptyGame(mode: "solo" | "multi"): GameState {
   return {
@@ -184,6 +194,13 @@ function beginCycle(state: GameState): void {
   }
   state.restPollClosed = false;
   log(state, `Diurnal Cycle ${state.cycle} begins (${dnc.name}).`);
+  if (state.cycle > 1) {
+    state.lastDiceRoll = null;
+    state.pendingRerollPrompt = null;
+    state.pendingRerollTimeTravelId = null;
+    state.presentationHold = { at: "cycle_start", cycle: state.cycle };
+    return;
+  }
   enterDncPhase(state, 0);
 }
 
@@ -315,6 +332,10 @@ function applyActionInternal(state: GameState, playerId: string, action: GameAct
         resolveEventPickOne(state, ownerId, action.optionId, kind);
       } else if (kind === "pick_action_discard") {
         resolvePickActionDiscard(state, ownerId, action.optionId);
+      } else if (kind === "prayer_combo") {
+        resolvePrayerCombo(state, ownerId, action.optionId);
+      } else if (kind === "prayer_combo_confirm") {
+        resolvePrayerComboConfirm(state, ownerId, action.optionId);
       } else {
         resolvePickOne(state, ownerId, action.optionId);
       }
@@ -334,16 +355,25 @@ function applyActionInternal(state: GameState, playerId: string, action: GameAct
     }
     case "DISCARD_CARDS": {
       const ownerId = assertPendingController(state, playerId);
-      const pendingEffectId = state.pendingChoice?.cardId
-        ? getCard(state.pendingChoice.cardId).effectId
-        : undefined;
-      if (hasPendingReroll(state) && state.pendingChoice?.kind === "discard_cards") {
+      const pending = state.pendingChoice;
+      const wasPoopPatrol = isPoopPatrolDiscard(pending);
+      const wasRuleBookOverflow = pending?.kind === "discard_cards" && pending.cardId === RULE_BOOK_CARD_ID;
+      const wasWildCard = isWildCardDiscard(pending);
+      const pendingEffectId = pending?.cardId ? getCard(pending.cardId).effectId : undefined;
+      if (hasPendingReroll(state) && pending?.kind === "discard_cards") {
         completeRerollAfterDiscard(state, ownerId, action.cardInstanceIds);
         state.pendingChoice = null;
       } else {
         resolveDiscardEffect(state, ownerId, action.cardInstanceIds, pendingEffectId);
         if (state.pendingChoice?.kind === "discard_cards") {
           state.pendingChoice = null;
+        }
+        if (wasPoopPatrol) {
+          continueHandSizeDiscard(state, ownerId);
+        } else if (wasRuleBookOverflow) {
+          continueHandSizeDiscardWithCard(state, ownerId, RULE_BOOK_CARD_ID);
+        } else if (wasWildCard) {
+          continueWildCardDiscard(state, ownerId);
         }
       }
       stampSoloController(state);
@@ -354,6 +384,15 @@ function applyActionInternal(state: GameState, playerId: string, action: GameAct
       resolveEnergyDistribution(state, action.distribution);
       state.pendingChoice = null;
       break;
+    case "RULE_BOOK_TRANSFER": {
+      const ownerId = assertPendingController(state, playerId);
+      const overflowPlayerId = resolveRuleBookTransfer(state, ownerId, action);
+      if (overflowPlayerId) {
+        startOverflowDiscardForPlayer(state, overflowPlayerId, RULE_BOOK_CARD_ID);
+      }
+      stampSoloController(state);
+      break;
+    }
     case "ROLL_DICE":
       handleTriggerRoll(state, playerId);
       break;
@@ -386,6 +425,8 @@ function maybeAdvanceAfterDeferredEventRoll(state: GameState): void {
   if (!state.pendingPostTriggerAdvance) return;
   if (hasPendingReroll(state)) return;
   if (state.pendingChoice) return;
+  // Wait for post_event_roll ACK — do not clear lastDiceRoll or advance while the outcome is pending.
+  if (state.presentationHold) return;
   state.pendingPostTriggerAdvance = false;
   state.lastDiceRoll = null;
   if (finishDncCyclePhases(state)) {
@@ -523,6 +564,12 @@ function handleAckPresentation(state: GameState, playerId: string): void {
   const hold = state.presentationHold;
   if (!hold) return;
 
+  if (hold.at === "cycle_start") {
+    state.presentationHold = null;
+    enterDncPhase(state, 0);
+    return;
+  }
+
   if (hold.at === "manifest") {
     state.presentationHold = null;
     applyManifest(state);
@@ -537,7 +584,15 @@ function handleAckPresentation(state: GameState, playerId: string): void {
 
   if (hold.at === "post_trigger_roll") {
     resolveTriggerRollOutcome(state, playerId, hold);
+    // Roll-effect events set post_event_roll via beginDiceRoll; keep that hold for the client tumble.
+    if (state.presentationHold?.at === "post_event_roll") {
+      return;
+    }
     state.presentationHold = null;
+    // Event-effect Time Travel offer: wait for Path A / TT before advancing.
+    if (state.pendingRerollPrompt) {
+      return;
+    }
     if (state.pendingChoice) {
       state.pendingPostTriggerAdvance = true;
     } else if (!state.pendingPostTriggerAdvance) {
@@ -547,6 +602,8 @@ function handleAckPresentation(state: GameState, playerId: string): void {
   }
 
   if (hold.at === "post_event_roll") {
+    // Prefer the presented roll so TT rerolls resolve correctly even if lastDiceRoll was cleared.
+    state.lastDiceRoll = hold.roll;
     resumeCardRollEffect(state, {
       effectId: hold.effectId,
       playerId: hold.playerId,
@@ -766,6 +823,14 @@ function handleRestVote(state: GameState, playerId: string, vote: boolean): void
   }
 
   // 3–4 player multi: wait for unanimous Rest among eligible players.
+  // Human Rest pulls in eligible AI so consensus does not wait on AI initiative.
+  if (player.isHuman) {
+    for (const p of state.players) {
+      if (p.isHuman || !canVoteRest(state, p)) continue;
+      p.restVote = true;
+      log(state, `${p.name} joins Rest.`);
+    }
+  }
   const eligible = restEligiblePlayers(state);
   if (eligible.length > 0 && eligible.every((p) => p.restVote === true)) {
     const reward = applyGroupRestRewards(state);

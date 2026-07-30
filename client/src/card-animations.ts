@@ -1,7 +1,13 @@
 import type { CardInstance } from "../../shared/types.js";
 
 import { playCardDrawSound } from "./audio.js";
-import { bindHandClickHandlers, cardImg, cardName, getHandCardVisualClass, type HandCardVisualClass } from "./ws-client.js";
+import {
+  cardImg,
+  cardName,
+  handCardPlayableClass,
+  type HandCardVisualClass,
+  type HandRenderContext,
+} from "./ws-client.js";
 
 
 
@@ -235,90 +241,51 @@ export async function runDrawAnimations(
 
   getCardClass?: (card: CardInstance) => HandCardVisualClass,
 
-  handCtx?: Parameters<typeof bindHandClickHandlers>[2]
+  handCtx?: HandRenderContext
 
 ): Promise<void> {
 
   const classify =
-
     getCardClass ??
-
     ((card) =>
-
-      handCtx ? getHandCardVisualClass(handCtx.phase, card.cardId, handCtx.pub) : ("unplayable" as const));
+      handCtx ? handCardPlayableClass(handCtx, card) : ("unplayable" as const));
 
   const newCards = hand.filter((c) => !prevIds.has(c.instanceId));
 
   if (!newCards.length || isAnimatingDraw) {
-
     onRenderHand(hand);
-
     return;
-
   }
 
-
-
   isAnimatingDraw = true;
-
   const existingHand = hand.filter((c) => prevIds.has(c.instanceId));
 
-
-
   try {
-
     onRenderHand(existingHand);
 
-
-
     for (let i = 0; i < newCards.length; i++) {
-
       const card = newCards[i];
-
       playCardDrawSound();
-
       const placeholder = createPlaceholderSlot();
-
       handRoot.appendChild(placeholder);
-
       await waitForLayout();
-
-
 
       await spawnFlyingCardToSlot(card, handRoot, placeholder, classify(card));
 
-
-
       const dealt = createHandCardElement(card, "", classify(card));
-
       placeholder.replaceWith(dealt);
 
-
-
       if (i < newCards.length - 1) {
-
         await sleep(CARD_STAGGER_MS);
-
       }
-
     }
 
-
-
-    if (handCtx) {
-
-      bindHandClickHandlers(handRoot, hand, handCtx);
-
-    }
-
+    // Rebuild with legalActions-aware classes (classify alone can miss playable state mid-deal).
+    onRenderHand(hand);
   } finally {
-
     handRoot.querySelectorAll(".hand-slot-placeholder").forEach((el) => el.remove());
-
     isAnimatingDraw = false;
-
   }
-
 }
 
 

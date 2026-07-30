@@ -7,7 +7,7 @@ import {
   isGameIntroSequenceComplete,
   openGameStartModalIfNeeded,
 } from "./game-start-modal.js";
-import { getHandCardVisualClass, type HandRenderContext } from "./ws-client.js";
+import type { HandRenderContext } from "./ws-client.js";
 
 type SendFn = (action: GameAction) => void;
 type IntroMode = "solo" | "tv" | "play";
@@ -66,7 +66,8 @@ export async function runGameIntroIfNeeded(
   }
 
   if (!needsIntro(pub) || introRunning) return null;
-  if (ctx.hand.length === 0) return null;
+  // TV is board-only; solo/play need a hand before dealing cards.
+  if (ctx.mode !== "tv" && ctx.hand.length === 0) return null;
 
   introStarted = true;
   introRunning = true;
@@ -89,7 +90,7 @@ export async function runGameIntroIfNeeded(
           new Set(),
           ctx.hand,
           ctx.onRenderHand,
-          (card) => getHandCardVisualClass(pub.phase, card.cardId, pub),
+          undefined,
           ctx.handCtx
         );
       }

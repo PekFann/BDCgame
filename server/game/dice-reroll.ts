@@ -1,10 +1,23 @@
 import { DNC, getCard } from "../../shared/cards.js";
-import type { GameState, PendingRerollPrompt, PendingCardRollResume, TriggerOutcome } from "../../shared/types.js";
+import type {
+  GameState,
+  PendingCardRollResume,
+  PendingRerollPrompt,
+  TriggerOutcome,
+} from "../../shared/types.js";
 import { resumeCardRollEffect } from "./card-roll-resume.js";
 import { discardFromHand, peekEventCardId, removeFromHandToDiscard } from "./effects/primitives.js";
 import { isEventRollEffect } from "./effects/triggers.js";
 import { getPlayer } from "./rules.js";
 import { log, rollD6 } from "./util.js";
+
+function isTimeTravelCard(cardId: string): boolean {
+  return getCard(cardId).effectId === "time_travel";
+}
+
+function nonTimeTravelCards(hand: { instanceId: string; cardId: string }[]) {
+  return hand.filter((c) => !isTimeTravelCard(c.cardId));
+}
 
 function findTimeTravelInstance(player: { hand: { instanceId: string; cardId: string }[] }) {
   return player.hand.find((c) => getCard(c.cardId).effectId === "time_travel");
@@ -14,8 +27,19 @@ export function getTimeTravelEligiblePlayers(state: GameState) {
   return state.players.filter((p) => findTimeTravelInstance(p));
 }
 
-function buildRerollQueue(state: GameState, rollerId: string) {
+function buildRerollQueue(
+  state: GameState,
+  rollerId: string,
+  context: PendingRerollPrompt["context"]
+) {
   const eligible = getTimeTravelEligiblePlayers(state);
+  // Card rolls: only the roller may use Time Travel (avoids solo AI chain prompts).
+  if (context === "card") {
+    const roller = eligible.find((p) => p.id === rollerId);
+    return roller
+      ? [{ playerId: roller.id, isHuman: roller.isHuman, name: roller.name }]
+      : [];
+  }
   const roller = eligible.find((p) => p.id === rollerId);
   const others = eligible.filter((p) => p.id !== rollerId);
   const ordered = roller ? [roller, ...others] : others;
@@ -78,7 +102,7 @@ function finalizeDiceRoll(state: GameState): void {
 }
 
 function startRerollOffers(state: GameState, rollerId: string, context: PendingRerollPrompt["context"]): void {
-  const queue = buildRerollQueue(state, rollerId);
+  const queue = buildRerollQueue(state, rollerId, context);
   if (queue.length === 0) {
     finalizeDiceRoll(state);
     return;
@@ -109,7 +133,7 @@ export function beginDiceRoll(
 }
 
 function pickAiDiscardId(player: { hand: { instanceId: string; cardId: string }[] }): string | null {
-  return player.hand[0]?.instanceId ?? null;
+  return nonTimeTravelCards(player.hand)[0]?.instanceId ?? null;
 }
 
 export function executeReroll(
@@ -132,7 +156,14 @@ export function completeRerollAfterDiscard(
   discardIds: string[]
 ): void {
   const context = state.pendingRerollPrompt?.context ?? "trigger";
-  discardFromHand(state, getPlayer(state, playerId), discardIds);
+  const player = getPlayer(state, playerId);
+  for (const id of discardIds) {
+    const card = player.hand.find((c) => c.instanceId === id);
+    if (card && isTimeTravelCard(card.cardId)) {
+      throw new Error("Cannot discard Time Travel for the reroll cost");
+    }
+  }
+  discardFromHand(state, player, discardIds);
   executeReroll(state, playerId, context);
 }
 
@@ -164,8 +195,9 @@ export function acceptReroll(state: GameState, actingHumanId: string): void {
   consumeTimeTravel(state, targetId);
   const playerAfter = getPlayer(state, targetId);
   const context = prompt.context;
+  const eligible = nonTimeTravelCards(playerAfter.hand);
 
-  if (playerAfter.hand.length === 0) {
+  if (eligible.length === 0) {
     executeReroll(state, targetId, context);
     return;
   }

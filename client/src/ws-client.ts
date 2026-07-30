@@ -2,9 +2,19 @@ import type { GameAction, PrivateGameState, PublicGameState, CardInstance, Phase
 import cardsData from "../../data/cards.json";
 import { isCardModalBlockingPendingActions } from "./card-modal.js";
 import { BOARD_EVENT_PENDING_KINDS, humanControlsPending } from "./pending-choice-ui.js";
-import { isFriendshipGainOption, snapshotFriendshipBeforeChoice } from "./friendship-vfx.js";
+import { prepareFriendshipGainOption } from "./friendship-vfx.js";
 import { isInputLocked } from "./input-lock.js";
-import { ENERGY_ICON, FRIENDSHIP_ICON, DAY_REST_BUTTON, NIGHT_REST_BUTTON, END_PHASE_BUTTON } from "./ui-icons.js";
+import { isGameIntroSequenceComplete } from "./game-start-modal.js";
+import {
+  ENERGY_ICON,
+  FRIENDSHIP_ICON,
+  POSSESSED_HEALTH_ICON,
+  DEMON_HEALTH_ICON,
+  ATTACK_ICON,
+  DAY_REST_BUTTON,
+  NIGHT_REST_BUTTON,
+  END_PHASE_BUTTON,
+} from "./ui-icons.js";
 
 export { ENERGY_ICON, FRIENDSHIP_ICON } from "./ui-icons.js";
 
@@ -111,8 +121,9 @@ export function syncDncPhaseMarker(root: HTMLElement): void {
   const bandHeight = current.offsetHeight;
   markers.forEach((el) => {
     const marker = el as HTMLElement;
-    marker.style.top = `${bandTop}px`;
-    marker.style.height = `${bandHeight}px`;
+    const markerH = marker.offsetHeight || 12;
+    marker.style.top = `${bandTop + (bandHeight - markerH) / 2}px`;
+    marker.style.height = "";
     marker.classList.add("is-visible");
   });
 }
@@ -413,9 +424,7 @@ export function renderBoardEventChoice(
       btn.className = "btn secondary board-event-btn";
       btn.textContent = opt.label;
       btn.onclick = () => {
-        if (isFriendshipGainOption(opt.id)) {
-          snapshotFriendshipBeforeChoice(pub, humanPlayerId!);
-        }
+        prepareFriendshipGainOption(pub, pc.playerId, opt.id);
         send!({ type: "RESOLVE_PICK_ONE", optionId: opt.id });
       };
       actions.appendChild(btn);
@@ -487,27 +496,25 @@ function renderImpAttachments(
     .join("");
 }
 
-function rosterLighthouseMarkup(
-  player: RosterPlayer,
-  pub: PublicGameState,
-  humanPlayerId: string
+function renderLighthouseAttachments(
+  players: RosterPlayer[],
+  pub: PublicGameState
 ): string {
-  const lighthouse = findPersistentByEffect(player, "lighthouse");
-  if (!lighthouse) return "";
   const awaiting = pub.pendingLighthousePrompt?.awaitingPlayerId;
-  const canUse =
-    pub.phase === "manifest" &&
-    pub.presentationHold?.at === "manifest" &&
-    awaiting === player.id &&
-    (player.id === humanPlayerId || !player.isHuman);
-  const tag = canUse ? "button" : "span";
-  const extra = canUse
-    ? ` type="button" class="lighthouse-attachment is-active" data-player-id="${player.id}" title="Lighthouse — discard 1 to block 1 manifest damage"`
-    : ` class="lighthouse-attachment" title="Lighthouse"`;
-  return `
-    <${tag}${extra}>
+  return players
+    .map((player, index) => {
+      const lighthouse = findPersistentByEffect(player, "lighthouse");
+      if (!lighthouse) return "";
+      const ownerLabel = player.isHuman ? "You" : player.name || `P${index + 1}`;
+      const ownerClass = player.isHuman ? "is-owner-human" : "";
+      const awaitingClass = awaiting === player.id ? "is-awaiting" : "";
+      return `
+    <div class="board-attachment lighthouse-attachment ${ownerClass} ${awaitingClass}" data-player-id="${player.id}" title="Lighthouse — ${ownerLabel}">
       <img src="${cardImg(lighthouse.cardId)}" alt="Lighthouse" />
-    </${tag}>`;
+      <span class="lighthouse-owner-label">${ownerLabel}</span>
+    </div>`;
+    })
+    .join("");
 }
 
 export function renderPlayerRoster(
@@ -519,16 +526,19 @@ export function renderPlayerRoster(
     <div class="player-roster">
       ${players
         .map(
-          (p) => `
-        <div class="player-roster-row ${p.isHuman ? "is-human" : ""} ${p.isConnected ? "connected" : ""} ${p.id === selectedPlayerId ? "is-selected" : ""}" data-player-id="${p.id}" role="button" tabindex="0">
+          (p) => {
+            const isLighthouseAwaiting =
+              rosterCtx?.pub.pendingLighthousePrompt?.awaitingPlayerId === p.id;
+            return `
+        <div class="player-roster-row ${p.isHuman ? "is-human" : ""} ${p.isConnected ? "connected" : ""} ${p.id === selectedPlayerId ? "is-selected" : ""} ${isLighthouseAwaiting ? "is-lighthouse-awaiting" : ""}" data-player-id="${p.id}" role="button" tabindex="0">
           <span class="player-roster-name">${p.name}</span>
           <span class="player-roster-values">
             <span class="roster-stat" title="Energy"><img class="roster-stat-icon" src="${ENERGY_ICON}" alt="Energy" />${p.energy}</span>
             <span class="roster-stat" title="Friendship"><img class="roster-stat-icon" src="${FRIENDSHIP_ICON}" alt="Friendship" />${p.friendship}</span>
             ${p.handCount != null ? `<span class="roster-stat roster-hand" title="Hand cards">${p.handCount} cards</span>` : ""}
-            ${rosterCtx ? rosterLighthouseMarkup(p, rosterCtx.pub, rosterCtx.humanPlayerId) : ""}
           </span>
-        </div>`
+        </div>`;
+          }
         )
         .join("")}
     </div>`;
@@ -624,14 +634,26 @@ export function renderBoard(
 ): void {
   const possessedImg = cardImg(pub.possessedId);
   const possessedName = cardName(pub.possessedId);
+  const possessedReq = possessedFriendshipRequirement(pub.possessedId);
   const hpNote =
     pub.possessedMaxHp < pub.possessedBaseHp
       ? ` <span class="stat-note">(cap ${pub.possessedMaxHp})</span>`
       : "";
   const demonImg = pub.demonRevealed && pub.demon ? cardImg(pub.demon.cardId) : cardImg("dc_cover");
+  const demonStatsHtml =
+    pub.demon && pub.demonRevealed
+      ? `<div class="demon-stats hero-slot-stats">
+              <span class="roster-stat" title="Health"><img class="roster-stat-icon" src="${DEMON_HEALTH_ICON}" alt="Health" />${pub.demon.hp}/${pub.demon.maxHp}</span>
+              <span class="roster-stat" title="Attack"><img class="roster-stat-icon" src="${ATTACK_ICON}" alt="Attack" />${pub.demon.attack}</span>
+            </div>`
+      : "";
   const dncImg = pub.currentDncId ? cardImg(pub.currentDncId) : "";
   const trumpetHtml = renderTrumpetAttachment(pub.players);
+  const lighthouseHtml = renderLighthouseAttachments(pub.players, pub);
   const impHtml = renderImpAttachments(pub.imps);
+  const demonIntroPending =
+    pub.started && pub.cycle === 1 && !pub.introAcknowledged && !isGameIntroSequenceComplete();
+  const demonSlotClass = demonIntroPending ? "card-slot demon hero-intro-pending" : "card-slot demon";
 
   const dayLabel =
     pub.phase === "day"
@@ -651,14 +673,12 @@ export function renderBoard(
         <strong>Cycle ${pub.cycle}/${pub.maxCycles}</strong> — Phase: <strong>${pub.phase}</strong>
         ${dayLabel ? `| ${dayLabel}` : ""}
         ${nightLabel ? `| ${nightLabel}` : ""}
-        ${pub.lastDiceRoll ? `| Roll: ${pub.lastDiceRoll}` : ""}
         ${pub.winner ? `| <span style="color:var(--gold)">${pub.winner === "players" ? "Victory!" : "Defeat"}</span>` : ""}
         ${drawPhasePrompt(pub)}
       </div>
       <div class="stats">
         <span class="stat" id="deck-anchor">Action ${pub.actionDeckCount}</span>
         <span class="stat">Event ${pub.eventDeckCount}</span>
-        ${pub.demon && pub.demonRevealed ? `<span class="stat">Demon ${pub.demon.hp}/${pub.demon.maxHp}</span>` : ""}
       </div>
     </div>
     <div class="board-stage">
@@ -676,12 +696,16 @@ export function renderBoard(
           <div class="board-hero">
             <div class="card-slot possessed">
               <img src="${possessedImg}" alt="Possessed" />
-              <div class="possessed-hp">HP ${pub.possessedHp}/${pub.possessedBaseHp}${hpNote}</div>
+              <div class="possessed-hp hero-slot-stats">
+                <span class="roster-stat" title="Health"><img class="roster-stat-icon" src="${POSSESSED_HEALTH_ICON}" alt="Health" />${pub.possessedHp}/${pub.possessedBaseHp}${hpNote}</span>
+                <span class="roster-stat" title="Friendship needed"><img class="roster-stat-icon" src="${FRIENDSHIP_ICON}" alt="Friendship" />${possessedReq}</span>
+              </div>
               <div class="label">${possessedName}</div>
-              <div class="possessed-attachments">${trumpetHtml}</div>
+              <div class="possessed-attachments">${lighthouseHtml}${trumpetHtml}</div>
             </div>
-            <div class="card-slot demon">
+            <div class="${demonSlotClass}">
               <img src="${demonImg}" alt="Demon" />
+              ${demonStatsHtml}
               <div class="label">${pub.demonRevealed ? "Demon" : "Contract"}</div>
               <div class="demon-attachments">${impHtml}</div>
             </div>
@@ -713,8 +737,8 @@ export function renderCompactStatus(
       ${drawPhasePrompt(pub)}
     </div>
     <div class="status-grid">
-      <span class="stat">Possessed ${pub.possessedHp}/${pub.possessedBaseHp}</span>
-      <span class="stat">Needs F${possessedReq}</span>
+      <span class="stat roster-stat" title="Possessed health"><img class="roster-stat-icon" src="${POSSESSED_HEALTH_ICON}" alt="Health" />${pub.possessedHp}/${pub.possessedBaseHp}</span>
+      <span class="stat roster-stat" title="Friendship needed"><img class="roster-stat-icon" src="${FRIENDSHIP_ICON}" alt="Friendship" />${possessedReq}</span>
       <span class="stat" id="deck-anchor">Deck ${pub.actionDeckCount}</span>
       ${pub.phase === "day" ? `<span class="stat">${formatPhaseActionLabel("day", pub.dayActionsRemaining, pub.currentDncDayTotal)}</span>` : ""}
       ${pub.phase === "night" ? `<span class="stat">${formatPhaseActionLabel("night", pub.nightActionsRemaining, pub.currentDncNightTotal)}</span>` : ""}
@@ -754,7 +778,7 @@ export function bindHandClickHandlers(
   });
 }
 
-function handCardPlayableClass(ctx: HandRenderContext, card: CardInstance): HandCardVisualClass {
+export function handCardPlayableClass(ctx: HandRenderContext, card: CardInstance): HandCardVisualClass {
   const base = getHandCardVisualClass(ctx.phase, card.cardId, ctx.pub);
   if (base === "actions-spent" || base === "unplayable") return base;
   const legal = ctx.priv.legalActions ?? [];

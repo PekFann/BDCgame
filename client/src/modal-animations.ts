@@ -1,6 +1,13 @@
 const OPEN_MS = 250;
 const CLOSE_MS = 200;
 
+export type OpenAnimatedModalOptions = {
+  /** Modal element ids that should stay open (not force-closed). */
+  preserveModalIds?: string[];
+  /** Show immediately without is-opening fade/scale. */
+  skipAnimation?: boolean;
+};
+
 function getModalBackdrop(root: HTMLElement): HTMLElement | null {
   return root.querySelector(".card-modal-backdrop, .modal-overlay");
 }
@@ -13,11 +20,18 @@ export function forceCloseModal(root: HTMLElement, panel: HTMLElement): void {
   getModalBackdrop(root)?.classList.remove("is-opening", "is-closing");
 }
 
-export function openAnimatedModal(root: HTMLElement, panel: HTMLElement): void {
+export function openAnimatedModal(
+  root: HTMLElement,
+  panel: HTMLElement,
+  options?: OpenAnimatedModalOptions
+): void {
+  const preserve = new Set(options?.preserveModalIds ?? []);
+
   document.querySelectorAll(".card-modal").forEach((el) => {
     if (el === root) return;
     const other = el as HTMLElement;
     if (other.hidden) return;
+    if (other.id && preserve.has(other.id)) return;
     const otherPanel = other.querySelector(".modal-panel") as HTMLElement | null;
     if (otherPanel) forceCloseModal(other, otherPanel);
     else other.hidden = true;
@@ -31,6 +45,14 @@ export function openAnimatedModal(root: HTMLElement, panel: HTMLElement): void {
   root.classList.remove("is-closing");
   panel.classList.remove("is-closing");
   backdrop?.classList.remove("is-closing");
+
+  if (options?.skipAnimation) {
+    root.classList.remove("is-opening");
+    panel.classList.remove("is-opening");
+    backdrop?.classList.remove("is-opening");
+    return;
+  }
+
   panel.classList.add("is-opening");
   root.classList.add("is-opening");
   backdrop?.classList.add("is-opening");

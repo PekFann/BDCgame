@@ -1,45 +1,41 @@
-// Phone + solo only — do not import from tv.ts.
 import type { DrawChoice, PublicGameState } from "../../shared/types.js";
-import { playMagicPopSound } from "./audio.js";
-import { CARD_ICON, ENERGY_ICON, FRIENDSHIP_ICON } from "./ui-icons.js";
+import { playVfxSound } from "./audio.js";
+import { DEFAULT_VFX_AUDIO } from "./vfx/types.js";
+import { spawnBurst, burstDurationMs } from "./vfx/burst.js";
+import { spawnFloater, spawnHtmlFloater } from "./vfx/floater.js";
+import { ensureVfxLayer } from "./vfx/layer.js";
+import {
+  CARD_ICON_URL,
+  ENERGY_ICON_URL,
+  FRIENDSHIP_ICON_URL,
+  getBurstEntry,
+  getBurstPreset,
+  getFloaterPreset,
+} from "./vfx/presets.js";
+import { pulseElement } from "./vfx/slot-fx.js";
 
 export type FriendshipVfxMode = "solo" | "phone";
 
-const DURATION_MS = 550;
-const BURST_STAGGER_MS = 60;
-const DRAW_FLOATER_MS = 900;
-const AI_DRAW_SEQUENCE_GAP_MS = 800;
-const FRIENDSHIP_ICON_URL = encodeURI(FRIENDSHIP_ICON);
-const ENERGY_ICON_URL = encodeURI(ENERGY_ICON);
-const CARD_ICON_URL = encodeURI(CARD_ICON);
-
-/** Preload friendship icon so burst particles render immediately. */
-new Image().src = FRIENDSHIP_ICON_URL;
-new Image().src = ENERGY_ICON_URL;
-new Image().src = CARD_ICON_URL;
-
+export const AI_DRAW_SEQUENCE_GAP_MS = 800;
 /** Option IDs that grant friendship — snapshot before send so VFX detects the gain. */
 export const FRIENDSHIP_GAIN_OPTION_IDS = new Set(["friendship", "friendship2", "friendship_all"]);
 
 /** Card effectIds that grant friendship on direct PLAY_CARD (no pick-one). */
 export const DIRECT_FRIENDSHIP_EFFECT_IDS = new Set(["good_old_days"]);
 
+const DIRECT_FRIENDSHIP_AMOUNTS: Record<string, number> = {
+  good_old_days: 3,
+};
+
 const prevFriendshipByPlayer = new Map<string, number>();
-/** Baseline captured on human action (card/draw click); takes priority for that player. */
-let friendshipSnapshotAtAction: number | null = null;
+/** Baseline captured on action click per beneficiary player. */
+const friendshipSnapshotByPlayer = new Map<string, number>();
 /** Set on draw-phase friendship click; consumed on next scheduled check. */
 let pendingDrawFriendshipGain: number | null = null;
+/** Explicit card/event friendship gains pending VFX (playerId → amount). */
+const pendingFriendshipGains = new Map<string, number>();
 let scheduleGen = 0;
 let teamScheduleGen = 0;
-let vfxLayer: HTMLElement | null = null;
-
-function ensureVfxLayer(): HTMLElement {
-  if (vfxLayer) return vfxLayer;
-  vfxLayer = document.createElement("div");
-  vfxLayer.id = "friendship-vfx-layer";
-  document.body.appendChild(vfxLayer);
-  return vfxLayer;
-}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -49,13 +45,51 @@ export function isFriendshipGainOption(optionId: string): boolean {
   return FRIENDSHIP_GAIN_OPTION_IDS.has(optionId);
 }
 
+/** Friendship amount granted by a pick-one option id. */
+export function friendshipGainAmountForOption(optionId: string): number {
+  if (optionId === "friendship2") return 2;
+  if (optionId === "friendship" || optionId === "friendship_all") return 1;
+  return 0;
+}
+
+export function directFriendshipGainAmount(effectId: string): number {
+  return DIRECT_FRIENDSHIP_AMOUNTS[effectId] ?? 0;
+}
+
 export function markPendingDrawFriendshipGain(amount = 1): void {
   pendingDrawFriendshipGain = amount;
 }
 
+export function markPendingFriendshipGain(playerId: string, amount: number): void {
+  if (!playerId || amount <= 0) return;
+  pendingFriendshipGains.set(playerId, (pendingFriendshipGains.get(playerId) ?? 0) + amount);
+}
+
+/** Snapshot + mark pending gain for a friendship pick-one option. */
+export function prepareFriendshipGainOption(
+  pub: PublicGameState,
+  beneficiaryPlayerId: string,
+  optionId: string
+): void {
+  if (!isFriendshipGainOption(optionId)) return;
+
+  if (optionId === "friendship_all") {
+    for (const player of pub.players) {
+      snapshotFriendshipBeforeChoice(pub, player.id);
+      markPendingFriendshipGain(player.id, 1);
+    }
+    return;
+  }
+
+  const amount = friendshipGainAmountForOption(optionId);
+  snapshotFriendshipBeforeChoice(pub, beneficiaryPlayerId);
+  markPendingFriendshipGain(beneficiaryPlayerId, amount);
+}
+
 export function resetFriendshipVfxTracking(): void {
   prevFriendshipByPlayer.clear();
-  friendshipSnapshotAtAction = null;
+  friendshipSnapshotByPlayer.clear();
+  pendingFriendshipGains.clear();
   pendingDrawFriendshipGain = null;
   scheduleGen = 0;
   teamScheduleGen = 0;
@@ -73,11 +107,11 @@ export function ensureFriendshipBaseline(pub: PublicGameState, humanPlayerId: st
   }
 }
 
-export function snapshotFriendshipBeforeChoice(pub: PublicGameState, humanPlayerId: string): void {
-  const human = pub.players.find((p) => p.id === humanPlayerId);
-  if (human) {
-    friendshipSnapshotAtAction = human.friendship;
-    prevFriendshipByPlayer.set(humanPlayerId, human.friendship);
+export function snapshotFriendshipBeforeChoice(pub: PublicGameState, playerId: string): void {
+  const player = pub.players.find((p) => p.id === playerId);
+  if (player) {
+    friendshipSnapshotByPlayer.set(playerId, player.friendship);
+    prevFriendshipByPlayer.set(playerId, player.friendship);
   }
 }
 
@@ -135,31 +169,6 @@ function resolveRosterRowAnchor(playerId: string): { rect: DOMRect; element: HTM
   return { rect: new DOMRect(cx - 60, cy - 20, 120, 40), element: el };
 }
 
-function spawnGainFloater(layer: HTMLElement, rect: DOMRect, amount: number): void {
-  const el = document.createElement("span");
-  el.className = "friendship-gain-float";
-  el.textContent = `+${amount}`;
-  el.style.left = `${rect.left + rect.width / 2}px`;
-  el.style.top = `${rect.top + rect.height * 0.2}px`;
-  layer.appendChild(el);
-  requestAnimationFrame(() => el.classList.add("friendship-gain-float--active"));
-  setTimeout(() => el.remove(), 950);
-}
-
-function pulsePossessed(element: HTMLElement): void {
-  element.classList.remove("possessed--friendship-hit");
-  void element.offsetWidth;
-  element.classList.add("possessed--friendship-hit");
-  setTimeout(() => element.classList.remove("possessed--friendship-hit"), 600);
-}
-
-function pulseRosterStat(element: HTMLElement): void {
-  element.classList.remove("roster-stat--friendship-hit");
-  void element.offsetWidth;
-  element.classList.add("roster-stat--friendship-hit");
-  setTimeout(() => element.classList.remove("roster-stat--friendship-hit"), 600);
-}
-
 function runFriendshipGainVfxForPlayer(
   amount: number,
   mode: FriendshipVfxMode,
@@ -169,50 +178,27 @@ function runFriendshipGainVfxForPlayer(
 ): void {
   if (amount <= 0) return;
 
-  playMagicPopSound();
+  const burstEntry = getBurstEntry("friendship_burst");
+  const burstPreset = burstEntry?.preset ?? getBurstPreset("friendship_burst");
+  const floaterPreset = getFloaterPreset("friendship_floater");
+  const audio = burstEntry?.audio ?? DEFAULT_VFX_AUDIO;
+  playVfxSound(audio.soundId, audio.soundDelayMs);
+
   const layer = ensureVfxLayer();
   const { rect, element } = resolveAnchorForPlayer(playerId, mode, humanPlayerId);
-  const count = Math.min(24, Math.max(8, amount * 6));
-  const particles: HTMLElement[] = [];
-  const originX = rect.left + rect.width / 2;
-  const originY = rect.top + rect.height / 2;
   const isSoloAi = mode === "solo" && playerId !== humanPlayerId;
-  const particleSize = isSoloAi ? 48 * 0.75 : mode === "solo" ? 48 : 36;
 
   if (mode === "solo" && element?.classList.contains("possessed")) {
-    pulsePossessed(element);
+    pulseElement(element, "possessed--friendship-hit", 600);
   } else if (mode === "solo" && element?.classList.contains("roster-stat")) {
-    pulseRosterStat(element);
+    pulseElement(element, "roster-stat--friendship-hit", 600);
   }
 
   if (!options?.skipTextFloater) {
-    spawnGainFloater(layer, rect, amount);
+    spawnFloater(layer, rect, amount, floaterPreset);
   }
 
-  for (let i = 0; i < count; i++) {
-    const img = document.createElement("img");
-    img.src = FRIENDSHIP_ICON_URL;
-    img.alt = "";
-    img.decoding = "async";
-    img.loading = "eager";
-    img.className = `friendship-particle friendship-particle--burst friendship-particle--${mode}`;
-    img.style.width = `${particleSize}px`;
-    img.style.height = `${particleSize}px`;
-    img.style.left = `${originX}px`;
-    img.style.top = `${originY}px`;
-    const angle = Math.random() * Math.PI * 2;
-    let distance = 120 + Math.random() * 160;
-    if (isSoloAi) distance *= 0.5;
-    img.style.setProperty("--burst-x", `${Math.cos(angle) * distance}px`);
-    img.style.setProperty("--burst-y", `${Math.sin(angle) * distance}px`);
-    img.style.animationDelay = `${Math.random() * BURST_STAGGER_MS}ms`;
-    layer.appendChild(img);
-    particles.push(img);
-  }
-
-  setTimeout(() => {
-    for (const p of particles) p.remove();
-  }, DURATION_MS + BURST_STAGGER_MS);
+  spawnBurst(layer, rect, amount, burstPreset, { mode, soloAi: isSoloAi }, burstEntry?.composition);
 }
 
 /** @deprecated Use runFriendshipGainVfxForPlayer via team check helpers. */
@@ -245,20 +231,13 @@ export function showDrawChoiceFloater(
       (element?.querySelector(".roster-stat[title='Friendship']") as HTMLElement | null) ??
       resolveAnchorForPlayer(playerId, "solo", humanPlayerId).element;
     if (friendshipStat?.classList.contains("roster-stat")) {
-      pulseRosterStat(friendshipStat);
+      pulseElement(friendshipStat, "roster-stat--friendship-hit", 600);
     }
     // Particles only — the draw-reward float carries the +1 text.
     runFriendshipGainVfxForPlayer(1, "solo", playerId, humanPlayerId, { skipTextFloater: true });
   }
 
-  const el = document.createElement("div");
-  el.className = "draw-reward-float";
-  el.innerHTML = drawChoiceFloaterMarkup(choice);
-  el.style.left = `${rect.left + rect.width / 2}px`;
-  el.style.top = `${rect.top + rect.height * 0.55}px`;
-  layer.appendChild(el);
-  requestAnimationFrame(() => el.classList.add("draw-reward-float--active"));
-  setTimeout(() => el.remove(), DRAW_FLOATER_MS + 50);
+  spawnHtmlFloater(layer, rect, drawChoiceFloaterMarkup(choice), getFloaterPreset("draw_reward_floater"));
 }
 
 /** Show each AI draw choice one-by-one, then resolve. */
@@ -300,17 +279,10 @@ export function showRestRewardFloater(
       (document.querySelector(
         `#board .player-roster-row[data-player-id="${playerId}"] .roster-stat[title='Energy']`
       ) as HTMLElement | null);
-    if (energyStat) pulseRosterStat(energyStat);
+    if (energyStat) pulseElement(energyStat, "roster-stat--friendship-hit", 600);
   }
 
-  const el = document.createElement("div");
-  el.className = "draw-reward-float";
-  el.innerHTML = restRewardFloaterMarkup(reward);
-  el.style.left = `${rect.left + rect.width / 2}px`;
-  el.style.top = `${rect.top + rect.height * 0.55}px`;
-  layer.appendChild(el);
-  requestAnimationFrame(() => el.classList.add("draw-reward-float--active"));
-  setTimeout(() => el.remove(), DRAW_FLOATER_MS + 50);
+  spawnHtmlFloater(layer, rect, restRewardFloaterMarkup(reward), getFloaterPreset("rest_reward_floater"));
 }
 
 /** Show each player's Rest reward one-by-one (draw-phase floater style). */
@@ -333,6 +305,33 @@ export async function runRestRewardSequence(
   }
 }
 
+function consumePendingCardGains(
+  pub: PublicGameState,
+  humanPlayerId: string,
+  mode: FriendshipVfxMode,
+  onlyHuman: boolean
+): boolean {
+  if (pendingFriendshipGains.size === 0) return false;
+
+  const entries = [...pendingFriendshipGains.entries()];
+  pendingFriendshipGains.clear();
+
+  let fired = false;
+  for (const [playerId, amount] of entries) {
+    if (onlyHuman && playerId !== humanPlayerId) continue;
+    if (!pub.players.some((p) => p.id === playerId)) continue;
+    if (import.meta.env.DEV) {
+      console.debug("[friendship-vfx] card pending", { playerId, amount });
+    }
+    runFriendshipGainVfxForPlayer(amount, mode, playerId, humanPlayerId);
+    const player = pub.players.find((p) => p.id === playerId);
+    if (player) prevFriendshipByPlayer.set(playerId, player.friendship);
+    friendshipSnapshotByPlayer.delete(playerId);
+    fired = true;
+  }
+  return fired;
+}
+
 export function checkTeamFriendshipGainVfx(
   pub: PublicGameState,
   humanPlayerId: string,
@@ -348,23 +347,28 @@ export function checkTeamFriendshipGainVfx(
       pendingDrawFriendshipGain = null;
       runFriendshipGainVfxForPlayer(amount, mode, humanPlayerId, humanPlayerId);
       prevFriendshipByPlayer.set(humanPlayerId, human.friendship);
-      friendshipSnapshotAtAction = null;
+      friendshipSnapshotByPlayer.delete(humanPlayerId);
+    } else if (consumePendingCardGains(pub, humanPlayerId, mode, true)) {
+      // Card pending already advanced human baseline.
     } else {
       const prev = prevFriendshipByPlayer.get(humanPlayerId);
-      const baseline = friendshipSnapshotAtAction ?? prev;
+      const snapshot = friendshipSnapshotByPlayer.get(humanPlayerId);
+      const baseline = snapshot ?? prev;
       const gained =
         baseline !== undefined && human.friendship > baseline ? human.friendship - baseline : 0;
       if (gained > 0) {
         runFriendshipGainVfxForPlayer(gained, mode, humanPlayerId, humanPlayerId);
       }
       prevFriendshipByPlayer.set(humanPlayerId, human.friendship);
-      friendshipSnapshotAtAction = null;
+      friendshipSnapshotByPlayer.delete(humanPlayerId);
     }
     for (const player of pub.players) {
       if (player.id !== humanPlayerId) {
         prevFriendshipByPlayer.set(player.id, player.friendship);
+        friendshipSnapshotByPlayer.delete(player.id);
       }
     }
+    pendingFriendshipGains.clear();
     return;
   }
 
@@ -376,21 +380,38 @@ export function checkTeamFriendshipGainVfx(
     }
     runFriendshipGainVfxForPlayer(amount, mode, humanPlayerId, humanPlayerId);
     prevFriendshipByPlayer.set(humanPlayerId, human.friendship);
-    friendshipSnapshotAtAction = null;
+    friendshipSnapshotByPlayer.delete(humanPlayerId);
     for (const player of pub.players) {
       if (player.id !== humanPlayerId) {
         prevFriendshipByPlayer.set(player.id, player.friendship);
+        friendshipSnapshotByPlayer.delete(player.id);
       }
+    }
+    pendingFriendshipGains.clear();
+    return;
+  }
+
+  if (consumePendingCardGains(pub, humanPlayerId, mode, false)) {
+    // Advance all baselines so we don't double-fire from delta detection.
+    for (const player of pub.players) {
+      prevFriendshipByPlayer.set(player.id, player.friendship);
+      friendshipSnapshotByPlayer.delete(player.id);
     }
     return;
   }
 
   for (const player of pub.players) {
+    // AI friendship visuals come from pending marks or runAiDrawChoiceSequence — never raw delta
+    // (AI draw resolves before the human's post_draw hold, which caused spurious day particles).
+    if (player.id !== humanPlayerId) {
+      prevFriendshipByPlayer.set(player.id, player.friendship);
+      friendshipSnapshotByPlayer.delete(player.id);
+      continue;
+    }
+
     const prev = prevFriendshipByPlayer.get(player.id);
-    const baseline =
-      player.id === humanPlayerId && friendshipSnapshotAtAction !== null
-        ? friendshipSnapshotAtAction
-        : prev;
+    const snapshot = friendshipSnapshotByPlayer.get(player.id);
+    const baseline = snapshot ?? prev;
     const gained =
       baseline !== undefined && player.friendship > baseline ? player.friendship - baseline : 0;
 
@@ -407,9 +428,8 @@ export function checkTeamFriendshipGainVfx(
       runFriendshipGainVfxForPlayer(gained, mode, player.id, humanPlayerId);
     }
     prevFriendshipByPlayer.set(player.id, player.friendship);
+    friendshipSnapshotByPlayer.delete(player.id);
   }
-
-  friendshipSnapshotAtAction = null;
 }
 
 export function checkFriendshipGainVfx(
@@ -430,26 +450,32 @@ export function checkFriendshipGainVfx(
     pendingDrawFriendshipGain = null;
     runFriendshipGainVfxForPlayer(amount, mode, humanPlayerId, humanPlayerId);
     prevFriendshipByPlayer.set(humanPlayerId, human.friendship);
-    friendshipSnapshotAtAction = null;
+    friendshipSnapshotByPlayer.delete(humanPlayerId);
+    pendingFriendshipGains.delete(humanPlayerId);
+    return;
+  }
+
+  if (consumePendingCardGains(pub, humanPlayerId, mode, true)) {
     return;
   }
 
   const prev = prevFriendshipByPlayer.get(humanPlayerId);
-  const baseline = friendshipSnapshotAtAction ?? prev;
+  const snapshot = friendshipSnapshotByPlayer.get(humanPlayerId);
+  const baseline = snapshot ?? prev;
   const gained =
     baseline !== undefined && human.friendship > baseline ? human.friendship - baseline : 0;
 
   if (gained > 0) {
     runFriendshipGainVfxForPlayer(gained, mode, humanPlayerId, humanPlayerId);
-    friendshipSnapshotAtAction = null;
   }
 
   prevFriendshipByPlayer.set(humanPlayerId, human.friendship);
+  friendshipSnapshotByPlayer.delete(humanPlayerId);
 }
 
 export function waitForFriendshipVfxComplete(): Promise<void> {
   return new Promise((resolve) => {
-    setTimeout(resolve, DURATION_MS + BURST_STAGGER_MS + 100);
+    setTimeout(resolve, burstDurationMs(getBurstPreset("friendship_burst")) + 100);
   });
 }
 

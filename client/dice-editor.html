@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dice Editor — BDC</title>
+    <link rel="stylesheet" href="/src/styles/main.css" />
+    <link rel="stylesheet" href="/src/styles/dice-editor.css" />
+    <script type="module" src="/src/ambient-bg.ts"></script>
+  </head>
+  <body class="dice-editor-body">
+    <header class="dice-editor-header">
+      <h1>Dice Editor</h1>
+      <p><a href="/">Back</a></p>
+    </header>
+    <div class="dice-editor-layout">
+      <aside class="dice-editor-sidebar" id="dice-sidebar">
+        <label class="dice-field">
+          <span>Final face</span>
+          <select id="dice-face-select">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6" selected>6</option>
+          </select>
+        </label>
+        <label class="dice-field dice-field--checkbox">
+          <input type="checkbox" id="dice-large-preview" checked />
+          <span>Large preview size</span>
+        </label>
+        <label class="dice-field dice-field--checkbox">
+          <input type="checkbox" id="dice-play-hold" checked />
+          <span>Include landed hold</span>
+        </label>
+        <label class="dice-field dice-field--checkbox">
+          <input type="checkbox" id="dice-play-scale-out" />
+          <span>Scale out after roll</span>
+        </label>
+        <div id="dice-face-textures" class="dice-face-textures"></div>
+        <p class="dice-editor-hint" id="dice-upload-warn" hidden></p>
+        <div id="dice-sliders" class="dice-sliders"></div>
+        <div class="dice-editor-actions">
+          <button type="button" class="btn" id="dice-play">Play roll</button>
+          <button type="button" class="btn secondary" id="dice-reset">Reset to defaults</button>
+        </div>
+        <label class="dice-field">
+          <span>JSON</span>
+          <textarea id="dice-json" rows="12" readonly></textarea>
+        </label>
+        <button type="button" class="btn" id="dice-save">Save to project</button>
+        <button type="button" class="btn secondary" id="dice-copy">Copy JSON</button>
+        <p class="dice-editor-hint" id="dice-status" hidden></p>
+        <p class="dice-editor-hint">
+          Save writes to client/src/dice/presets.user.json (merged on load). Game trigger rules are
+          unchanged.
+        </p>
+      </aside>
+      <main class="dice-editor-stage-wrap">
+        <div id="dice-stage" class="dice-editor-stage">
+          <div id="dice-host" class="dice-editor-host"></div>
+        </div>
+      </main>
+    </div>
+    <script type="module" src="/src/dice-editor.ts"></script>
+  </body>
+</html>

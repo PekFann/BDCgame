@@ -14,6 +14,30 @@ import { getPlayer, legalDamageTargets } from "./rules.js";
 import { enterDncPhase } from "./phases.js";
 import { log } from "./util.js";
 
+export const WILD_CARD_ID = "action_14";
+const WILD_CARD_HAND_TARGET = 2;
+
+export function isWildCardDiscard(pending: GameState["pendingChoice"]): boolean {
+  return pending?.kind === "discard_cards" && pending.cardId === WILD_CARD_ID;
+}
+
+/** After Wild Card 4–6: prompt discard one card at a time until hand size is 2. */
+export function startWildCardDiscardIfNeeded(state: GameState, playerId: string): void {
+  const player = getPlayer(state, playerId);
+  if (player.hand.length <= WILD_CARD_HAND_TARGET) return;
+  state.pendingChoice = {
+    kind: "discard_cards",
+    playerId,
+    minDiscard: 1,
+    maxDiscard: 1,
+    cardId: WILD_CARD_ID,
+  };
+}
+
+export function continueWildCardDiscard(state: GameState, playerId: string): void {
+  startWildCardDiscardIfNeeded(state, playerId);
+}
+
 function demonTargets(state: GameState): string[] {
   return legalDamageTargets(state);
 }
@@ -48,27 +72,46 @@ export function resumeCardRollEffect(state: GameState, resume: PendingCardRollRe
       if (roll <= 3) {
         discardFromHand(state, player, player.hand.map((c) => c.instanceId));
         drawForPlayer(state, player, 5);
+        log(state, `${player.name} discards their hand and draws 5 cards.`);
       } else {
         drawForPlayer(state, player, 5);
-        if (player.hand.length > 2) {
-          const excess = player.hand.splice(2);
-          state.actionDiscard.push(...excess);
-        }
+        log(state, `${player.name} draws 5 cards.`);
+        startWildCardDiscardIfNeeded(state, resume.playerId);
       }
       break;
     case "instant_access":
-      if (roll <= 3 && state.actionDiscard.length > 0) {
+      if (roll <= 3) {
+        if (state.actionDiscard.length === 0) {
+          log(state, "Instant Access: discard pile is empty.");
+          break;
+        }
         state.pendingChoice = {
           kind: "pick_action_discard",
           playerId: resume.playerId,
           cardId: "action_17",
+          searchPile: "discard",
           options: state.actionDiscard.map((c) => ({
             id: c.instanceId,
             label: getCard(c.cardId).name,
+            cardId: c.cardId,
           })),
         };
       } else {
-        drawForPlayer(state, player, 1);
+        if (state.actionDeck.length === 0) {
+          log(state, "Instant Access: action deck is empty.");
+          break;
+        }
+        state.pendingChoice = {
+          kind: "pick_action_discard",
+          playerId: resume.playerId,
+          cardId: "action_17",
+          searchPile: "deck",
+          options: state.actionDeck.map((c) => ({
+            id: c.instanceId,
+            label: getCard(c.cardId).name,
+            cardId: c.cardId,
+          })),
+        };
       }
       break;
     case "chain_broken":

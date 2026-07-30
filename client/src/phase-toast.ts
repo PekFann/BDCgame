@@ -14,7 +14,7 @@ function ensureToast(): HTMLElement {
   return toastEl;
 }
 
-function showToast(title: string, detail: string): void {
+function showToast(title: string, detail: string, durationMs = 2000): void {
   const el = ensureToast();
   if (hideTimer) clearTimeout(hideTimer);
 
@@ -25,7 +25,7 @@ function showToast(title: string, detail: string): void {
   sub.className = "phase-toast-detail";
   sub.textContent = detail;
   el.appendChild(heading);
-  el.appendChild(sub);
+  if (detail) el.appendChild(sub);
 
   el.hidden = false;
   el.classList.remove("phase-toast-out");
@@ -39,7 +39,11 @@ function showToast(title: string, detail: string): void {
       el.hidden = true;
       el.classList.remove("phase-toast-out");
     }, 280);
-  }, 2000);
+  }, durationMs);
+}
+
+export function showCycleStartToast(cycle: number): void {
+  showToast(`Day ${cycle}`, "", 1500);
 }
 
 export function showManifestToast(preview: ManifestPreview): void {
@@ -55,6 +59,8 @@ export function showManifestToast(preview: ManifestPreview): void {
 }
 
 export function refreshPhaseToast(pub: PublicGameState): void {
+  if (pub.presentationHold?.at === "cycle_start") return;
+
   const key = `${pub.cycle}-${pub.phase}`;
   if (key === lastToastKey) return;
   lastToastKey = key;

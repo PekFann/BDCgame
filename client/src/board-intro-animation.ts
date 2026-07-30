@@ -15,12 +15,14 @@ function waitForLayout(): Promise<void> {
 }
 
 async function revealHeroSlot(slot: HTMLElement): Promise<void> {
+  slot.classList.remove("hero-intro-reveal");
   slot.classList.add("hero-intro-pending");
   await waitForLayout();
 
   playCardDrawSound();
   slot.classList.remove("hero-intro-pending");
   slot.classList.add("hero-intro-reveal");
+  void slot.offsetWidth;
   await sleep(REVEAL_MS + 80);
   slot.classList.remove("hero-intro-reveal");
 }

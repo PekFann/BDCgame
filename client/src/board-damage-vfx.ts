@@ -1,4 +1,8 @@
 import type { PublicGameState } from "../../shared/types.js";
+import { spawnFloater } from "./vfx/floater.js";
+import { ensureVfxLayer } from "./vfx/layer.js";
+import { getFloaterPreset } from "./vfx/presets.js";
+import { pulseElement } from "./vfx/slot-fx.js";
 
 const prevHp = new Map<string, number>();
 
@@ -7,22 +11,14 @@ function hpKey(kind: "demon" | "imp", id: string): string {
 }
 
 function spawnDamageFloater(anchor: HTMLElement, amount: number): void {
+  const layer = ensureVfxLayer();
   const rect = anchor.getBoundingClientRect();
-  const el = document.createElement("span");
-  el.className = "board-damage-float";
-  el.textContent = `-${amount}`;
-  el.style.left = `${rect.left + rect.width / 2}px`;
-  el.style.top = `${rect.top + rect.height * 0.35}px`;
-  document.body.appendChild(el);
-  requestAnimationFrame(() => el.classList.add("board-damage-float--active"));
-  setTimeout(() => el.remove(), 900);
+  spawnFloater(layer, rect, amount, getFloaterPreset("damage_floater"));
 }
 
 function flashElement(el: HTMLElement): void {
-  el.classList.remove("board-attachment--hit", "demon-slot--hit");
-  void el.offsetWidth;
-  el.classList.add(el.classList.contains("card-slot") ? "demon-slot--hit" : "board-attachment--hit");
-  setTimeout(() => el.classList.remove("board-attachment--hit", "demon-slot--hit"), 550);
+  const hitClass = el.classList.contains("card-slot") ? "demon-slot--hit" : "board-attachment--hit";
+  pulseElement(el, hitClass, 550);
 }
 
 export function playBoardDamageVfx(boardRoot: HTMLElement, pub: PublicGameState): void {

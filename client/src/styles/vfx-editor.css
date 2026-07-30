@@ -1,0 +1,214 @@
+.vfx-editor-body {
+  min-height: 100vh;
+}
+
+.vfx-editor-header {
+  padding: 1rem 1.5rem 0;
+}
+
+.vfx-editor-header h1 {
+  margin: 0 0 0.25rem;
+}
+
+.vfx-editor-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) 1fr;
+  gap: 1rem;
+  padding: 1rem 1.5rem 2rem;
+  align-items: start;
+}
+
+.vfx-editor-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  max-height: calc(100vh - 6rem);
+  overflow: auto;
+}
+
+.vfx-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.vfx-field--checkbox {
+  flex-direction: row;
+  align-items: center;
+}
+
+.vfx-field select,
+.vfx-field input[type="number"],
+.vfx-field input[type="text"],
+.vfx-field input[type="color"],
+.vfx-field textarea {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.4);
+  color: inherit;
+  font: inherit;
+}
+
+.vfx-field textarea {
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+  resize: vertical;
+}
+
+.vfx-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.vfx-slider label {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  margin-bottom: 0.2rem;
+}
+
+.vfx-slider input[type="range"] {
+  width: 100%;
+}
+
+.vfx-editor-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.vfx-editor-stage-wrap {
+  min-height: 420px;
+}
+
+.vfx-editor-stage {
+  position: relative;
+  min-height: 420px;
+  padding: 2rem;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2rem;
+}
+
+.vfx-editor-stage .board-hero {
+  display: flex;
+  gap: 2rem;
+  justify-content: center;
+  align-items: flex-end;
+}
+
+.vfx-editor-stage .card-slot {
+  width: 140px;
+}
+
+.vfx-editor-stage .player-roster {
+  width: min(100%, 360px);
+}
+
+.vfx-layers-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.vfx-layers-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.vfx-layers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.vfx-layer-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.vfx-layer-row.is-selected .vfx-layer-name {
+  color: var(--gold, #c9a24d);
+}
+
+.vfx-layer-name {
+  flex: 1;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0.15rem 0;
+}
+
+.vfx-layer-dup,
+.vfx-layer-del {
+  padding: 0.15rem 0.4rem;
+  font-size: 0.75rem;
+}
+
+.vfx-layers-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+#vfx-status.is-error {
+  color: #ff8a80;
+}
+
+.vfx-editor-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  opacity: 0.75;
+  line-height: 1.35;
+}
+
+.vfx-icon-preview {
+  display: block;
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  margin-top: 0.35rem;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.vfx-tint-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.vfx-tint-clear {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+}
+
+.vfx-file-input {
+  font-size: 0.82rem;
+}
+
+@media (max-width: 900px) {
+  .vfx-editor-layout {
+    grid-template-columns: 1fr;
+  }
+}

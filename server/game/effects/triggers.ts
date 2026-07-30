@@ -1,5 +1,6 @@
 import type { GameState } from "../../../shared/types.js";
 import { getPlayer } from "../rules.js";
+import { startHandSizeDiscardIfNeeded } from "../hand-size-discard.js";
 import {
   damagePossessed,
   discardFromHand,
@@ -97,6 +98,7 @@ export function resolveEventEffect(
       state.modifiers.maxHandSize = 4;
       state.modifiers.handSizeReductionUntilCycle = state.cycle + 1;
       log(state, "Max hand size is 4 until end of next cycle.");
+      startHandSizeDiscardIfNeeded(state);
       break;
     case "event_throne":
       state.modifiers.maxEnergy = 4;

@@ -1,6 +1,6 @@
 import type { GameAction, PrivateGameState, PublicGameState } from "../../shared/types.js";
 import { closeAnimatedModal, forceCloseModal, openAnimatedModal } from "./modal-animations.js";
-import { isRerollDiceAnimReady } from "./trigger-roll-modal.js";
+import { isRerollDiceAnimReady, notifyRerollAccepted } from "./trigger-roll-modal.js";
 
 type SendFn = (action: GameAction) => void;
 
@@ -74,9 +74,12 @@ function populatePanel(
   `;
 
   panel.querySelector(".time-travel-accept")?.addEventListener("click", () => {
+    notifyRerollAccepted(prompt.context, prompt.roll);
+    forceCloseModal(modalEl!, panel);
     send({ type: "ACCEPT_REROLL" });
   });
   panel.querySelector(".time-travel-decline")?.addEventListener("click", () => {
+    forceCloseModal(modalEl!, panel);
     send({ type: "DECLINE_REROLL" });
   });
 }
@@ -109,7 +112,7 @@ export function refreshTimeTravelModal(
 
   populatePanel(panel, pub, priv, send);
   if (root.hidden) {
-    openAnimatedModal(root, panel);
+    openAnimatedModal(root, panel, { preserveModalIds: ["trigger-roll-modal"] });
   } else {
     root.hidden = false;
     root.style.pointerEvents = "";

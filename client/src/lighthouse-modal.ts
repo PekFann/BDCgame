@@ -45,12 +45,18 @@ function populatePanel(
   if (!owner) return;
 
   const hand = ownerHand(priv, owner.id);
-  const ownerLabel = owner.isHuman ? "You" : owner.name;
+  const isProxy = !owner.isHuman;
+  const title = isProxy
+    ? `Choose a card for ${owner.name}`
+    : "Discard 1 card to prevent 1 damage?";
+  const effectCopy = isProxy
+    ? `<strong>${owner.name}</strong> may discard 1 card to block 1 manifest damage. Pick a card below.`
+    : `Discard 1 card to block 1 manifest damage before manifest hits.`;
 
   panel.innerHTML = `
-    <h3 class="card-modal-title">Lighthouse</h3>
+    <h3 class="card-modal-title">${title}</h3>
     <p class="card-modal-effect">
-      <strong>${ownerLabel}</strong> may discard 1 card to block 1 manifest damage.
+      ${effectCopy}
     </p>
     <div class="lighthouse-hand-pick"></div>
     <div class="card-modal-buttons">

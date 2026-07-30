@@ -1,0 +1,170 @@
+.dice-editor-body {
+  min-height: 100vh;
+}
+
+.dice-editor-header {
+  padding: 1rem 1.5rem 0;
+}
+
+.dice-editor-header h1 {
+  margin: 0 0 0.25rem;
+}
+
+.dice-editor-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) 1fr;
+  gap: 1rem;
+  padding: 1rem 1.5rem 2rem;
+  align-items: start;
+}
+
+.dice-editor-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  max-height: calc(100vh - 6rem);
+  overflow: auto;
+}
+
+.dice-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.dice-field--checkbox {
+  flex-direction: row;
+  align-items: center;
+}
+
+.dice-field select,
+.dice-field input[type="number"],
+.dice-field input[type="color"],
+.dice-field textarea {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.4);
+  color: inherit;
+  font: inherit;
+}
+
+.dice-field textarea {
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+  resize: vertical;
+}
+
+.dice-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.dice-slider-group-title {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.8;
+}
+
+.dice-slider label {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  margin-bottom: 0.2rem;
+}
+
+.dice-slider input[type="range"] {
+  width: 100%;
+}
+
+.dice-editor-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.dice-editor-stage-wrap {
+  min-height: 420px;
+}
+
+.dice-editor-stage {
+  position: relative;
+  min-height: 420px;
+  padding: 2rem;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dice-editor-host {
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#dice-status.is-error {
+  color: #ff8a80;
+}
+
+.dice-editor-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  opacity: 0.75;
+  line-height: 1.35;
+}
+
+.dice-face-textures {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dice-face-upload-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.5rem;
+  align-items: end;
+}
+
+.dice-face-upload-preview {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.dice-face-clear {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.78rem;
+}
+
+.dice-file-input {
+  font-size: 0.82rem;
+}
+
+#dice-upload-warn.is-error {
+  color: #ff8a80;
+}
+
+@media (max-width: 900px) {
+  .dice-editor-layout {
+    grid-template-columns: 1fr;
+  }
+}

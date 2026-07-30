@@ -1,17 +1,34 @@
 // Phone + solo only — do not import from tv.ts.
 import type { PublicGameState } from "../../shared/types.js";
 import cardsData from "../../data/cards.json";
-import { playMagicPotionSound } from "./audio.js";
-import { POSSESSED_HEALTH_ICON } from "./ui-icons.js";
+import { playVfxSound } from "./audio.js";
+import { DEFAULT_VFX_AUDIO } from "./vfx/types.js";
+import { spawnBurst, burstDurationMs } from "./vfx/burst.js";
+import { spawnFloater, spawnHtmlFloater } from "./vfx/floater.js";
+import { ensureVfxLayer } from "./vfx/layer.js";
+import {
+  CARD_ICON_URL,
+  DRAW_FLOATER_MS,
+  ENERGY_ICON_URL,
+  FRIENDSHIP_ICON_URL,
+  getBurstEntry,
+  getBurstPreset,
+  getFloaterPreset,
+} from "./vfx/presets.js";
+import { pulseElement } from "./vfx/slot-fx.js";
 
 export type HealVfxMode = "solo" | "phone";
 
-const DURATION_MS = 550;
-const BURST_STAGGER_MS = 60;
-const HEALTH_ICON_URL = encodeURI(POSSESSED_HEALTH_ICON);
-
 /** Option IDs that heal Possessed — snapshot before send so VFX detects the gain. */
 export const HEAL_OPTION_IDS = new Set(["heal", "heal2"]);
+
+let prevPossessedHp: number | null = null;
+let healSnapshotAtAction: number | null = null;
+let scheduleGen = 0;
+
+export function isHealGainOption(optionId: string): boolean {
+  return HEAL_OPTION_IDS.has(optionId);
+}
 
 const cardEffectIds = Object.fromEntries(
   (cardsData as { id: string; effectId?: string }[]).map((c) => [c.id, c.effectId])
@@ -21,27 +38,6 @@ export function isGiftsDiscardPending(pub: PublicGameState): boolean {
   const pending = pub.pendingChoice;
   if (pending?.kind !== "discard_cards" || !pending.cardId) return false;
   return cardEffectIds[pending.cardId] === "gifts";
-}
-
-new Image().src = HEALTH_ICON_URL;
-
-let prevPossessedHp: number | null = null;
-let healSnapshotAtAction: number | null = null;
-let scheduleGen = 0;
-let vfxLayer: HTMLElement | null = null;
-
-function ensureVfxLayer(): HTMLElement {
-  if (vfxLayer) return vfxLayer;
-  vfxLayer = document.getElementById("friendship-vfx-layer") as HTMLElement | null;
-  if (vfxLayer) return vfxLayer;
-  vfxLayer = document.createElement("div");
-  vfxLayer.id = "friendship-vfx-layer";
-  document.body.appendChild(vfxLayer);
-  return vfxLayer;
-}
-
-export function isHealGainOption(optionId: string): boolean {
-  return HEAL_OPTION_IDS.has(optionId);
 }
 
 export function resetPossessedHealVfxTracking(): void {
@@ -82,65 +78,23 @@ function resolvePossessedAnchor(mode: HealVfxMode): { rect: DOMRect; element: HT
   return { rect: new DOMRect(cx - 40, cy - 40, 80, 80), element: el };
 }
 
-function spawnGainFloater(layer: HTMLElement, rect: DOMRect, amount: number): void {
-  const el = document.createElement("span");
-  el.className = "friendship-gain-float";
-  el.textContent = `+${amount}`;
-  el.style.left = `${rect.left + rect.width / 2}px`;
-  el.style.top = `${rect.top + rect.height * 0.2}px`;
-  layer.appendChild(el);
-  requestAnimationFrame(() => el.classList.add("friendship-gain-float--active"));
-  setTimeout(() => el.remove(), 950);
-}
-
-function pulsePossessed(element: HTMLElement): void {
-  element.classList.remove("possessed--heal-hit");
-  void element.offsetWidth;
-  element.classList.add("possessed--heal-hit");
-  setTimeout(() => element.classList.remove("possessed--heal-hit"), 600);
-}
-
 function runPossessedHealVfx(amount: number, mode: HealVfxMode): void {
   if (amount <= 0) return;
 
-  playMagicPotionSound();
+  const burstEntry = getBurstEntry("heal_burst");
+  const burstPreset = burstEntry?.preset ?? getBurstPreset("heal_burst");
+  const floaterPreset = getFloaterPreset("friendship_floater");
+  const audio = burstEntry?.audio ?? DEFAULT_VFX_AUDIO;
+  playVfxSound(audio.soundId, audio.soundDelayMs);
   const layer = ensureVfxLayer();
   const { rect, element } = resolvePossessedAnchor(mode);
-  const count = Math.min(24, Math.max(8, amount * 6));
-  const particles: HTMLElement[] = [];
-  const originX = rect.left + rect.width / 2;
-  const originY = rect.top + rect.height / 2;
-  const particleSize = mode === "solo" ? 48 : 36;
 
   if (element?.classList.contains("possessed")) {
-    pulsePossessed(element);
+    pulseElement(element, "possessed--heal-hit", 600);
   }
 
-  spawnGainFloater(layer, rect, amount);
-
-  for (let i = 0; i < count; i++) {
-    const img = document.createElement("img");
-    img.src = HEALTH_ICON_URL;
-    img.alt = "";
-    img.decoding = "async";
-    img.loading = "eager";
-    img.className = `friendship-particle friendship-particle--burst friendship-particle--${mode}`;
-    img.style.width = `${particleSize}px`;
-    img.style.height = `${particleSize}px`;
-    img.style.left = `${originX}px`;
-    img.style.top = `${originY}px`;
-    const angle = Math.random() * Math.PI * 2;
-    const distance = 120 + Math.random() * 160;
-    img.style.setProperty("--burst-x", `${Math.cos(angle) * distance}px`);
-    img.style.setProperty("--burst-y", `${Math.sin(angle) * distance}px`);
-    img.style.animationDelay = `${Math.random() * BURST_STAGGER_MS}ms`;
-    layer.appendChild(img);
-    particles.push(img);
-  }
-
-  setTimeout(() => {
-    for (const p of particles) p.remove();
-  }, DURATION_MS + BURST_STAGGER_MS);
+  spawnFloater(layer, rect, amount, floaterPreset);
+  spawnBurst(layer, rect, amount, burstPreset, { mode }, burstEntry?.composition);
 }
 
 export function checkPossessedHealVfx(pub: PublicGameState, mode: HealVfxMode): void {
@@ -172,4 +126,8 @@ export function schedulePossessedHealVfx(
       checkPossessedHealVfx(pub, mode);
     });
   });
+}
+
+export function healVfxDurationMs(): number {
+  return burstDurationMs(getBurstPreset("heal_burst"));
 }
